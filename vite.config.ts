@@ -27,12 +27,13 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,wasm}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,wasm,bin}'],
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
       },
     }),
   ],
   worker: { format: 'es' },
+  build: { chunkSizeWarningLimit: 1200 },
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],

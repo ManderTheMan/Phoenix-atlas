@@ -4,6 +4,7 @@ import { useUI, type ColorMode } from '../../state/ui';
 import { Check, Seg } from '../common';
 import Icon from '../Icon';
 import { GHOST_OPACITY } from './BodyViewer';
+import { Legend } from './TimeBar';
 
 const MODES: { value: ColorMode; label: string; title: string }[] = [
   { value: 'feeling', label: 'Feeling', title: 'Colour by how each part feels (recent notes weigh more)' },
@@ -83,6 +84,7 @@ export default function LayerPanel() {
               </button>
             ))}
           </div>
+          <Legend />
         </div>
         <p className="tiny muted">Lower a layer’s opacity to see and tap what’s underneath.</p>
       </div>

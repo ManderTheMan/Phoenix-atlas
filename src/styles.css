@@ -665,7 +665,11 @@ input[type='range'] {
   .layer-panel { width: 200px; top: 8px; left: 8px; }
   .layer-panel.collapsed { width: auto; }
   .view-buttons { top: 8px; right: 8px; }
-  .time-bar { left: 8px; right: 8px; bottom: 72px; padding: 8px 10px; }
+  .time-bar { left: 8px; right: 8px; bottom: 72px; padding: 6px 10px; gap: 4px; }
+  .time-bar .desc, .time-bar .legend { display: none; }
+  .time-bar .top { gap: 6px 8px; }
+  .time-bar .seg button { padding: 4px 7px; }
+  .time-bar .btn.small { padding: 4px 8px; }
   .legend .legend-bar { width: 80px; }
 }
 

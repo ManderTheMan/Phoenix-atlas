@@ -78,8 +78,8 @@ export async function deleteNote(id: string): Promise<void> {
     const children = await db.notes.where('followUpOf').equals(id).toArray();
     for (const c of children) await db.notes.update(c.id, { followUpOf: n.followUpOf });
     await db.notes.delete(id);
-    await db.activities.where('start').above(0).modify((a) => {
-      if (a.noteId === id) delete a.noteId;
+    await db.activities.filter((a) => a.noteId === id).modify((a) => {
+      delete a.noteId;
     });
   });
 }

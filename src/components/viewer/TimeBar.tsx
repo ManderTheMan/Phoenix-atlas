@@ -87,7 +87,7 @@ export default function TimeBar({ notes }: { notes: Note[] }) {
         </button>
         <div className="col" style={{ gap: 0 }}>
           <span className="date">{live ? 'Now' : formatDate(at)}</span>
-          <span className="tiny muted">
+          <span className="tiny muted desc">
             {ui.windowDays ? `Showing the ${ui.windowDays} days up to this date` : 'Showing all notes up to this date'}
           </span>
         </div>

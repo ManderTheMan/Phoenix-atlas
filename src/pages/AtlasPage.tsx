@@ -57,8 +57,7 @@ export default function AtlasPage() {
 
   // open the sheet on phones when something needs attention
   useEffect(() => {
-    if (ui.draft) setSheet('full');
-    else if (ui.selection) setSheet('open');
+    if (ui.draft || ui.selection) setSheet('open');
   }, [ui.draft, ui.selection]);
 
   const onPick = (sel: Selection) => {
