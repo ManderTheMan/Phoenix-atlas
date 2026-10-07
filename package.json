@@ -1,0 +1,48 @@
+{
+  "name": "phoenix-atlas",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Phoenix Atlas \u2014 tap a 3D body to log how it feels, track changes over time, import Google health data and share reports with your coach.",
+  "scripts": {
+    "dev": "vite",
+    "predev": "tsx scripts/build-model.ts",
+    "build": "tsc -b && vite build",
+    "prebuild": "tsx scripts/build-model.ts",
+    "preview": "vite preview",
+    "model": "tsx scripts/build-model.ts --force",
+    "typecheck": "tsc -b --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@react-three/drei": "^10.7.9",
+    "@react-three/fiber": "^9.8.1",
+    "dexie": "^4.4.6",
+    "dexie-react-hooks": "^4.4.0",
+    "fflate": "^0.8.3",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
+    "papaparse": "^5.7.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "sql.js": "^1.14.2",
+    "three": "^0.186.1",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@types/papaparse": "^5.5.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/sql.js": "^1.4.11",
+    "@types/three": "^0.186.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "fake-indexeddb": "^6.2.5",
+    "jsdom": "^29.1.1",
+    "meshoptimizer": "^1.3.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.3",
+    "vite-plugin-pwa": "^2.0.0",
+    "vitest": "^5.0.3"
+  }
+}
