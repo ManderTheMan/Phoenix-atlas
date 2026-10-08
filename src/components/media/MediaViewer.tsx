@@ -39,6 +39,11 @@ import Icon from '../Icon';
 import LeverageDiagram from '../movement/LeverageDiagram';
 import DetailsForm, { type MediaMeta } from './DetailsForm';
 import MarkLayer, { type Draft } from './MarkLayer';
+import PoseLayer from './PoseLayer';
+import PosePanel from './PosePanel';
+import QualityPanel from './QualityPanel';
+import { landmarksAt, nearSide } from '../../vision/analysis';
+import { usePoseTrack } from '../../vision/jobs';
 import { useFit } from './useFit';
 import VideoBar, { FRAME, fmtTime, useVideoTime } from './VideoBar';
 
@@ -82,7 +87,9 @@ export default function MediaViewer({ id, list }: { id: string; list?: string[] 
   const [duration, setDuration] = useState(item?.duration ?? 0);
   const [speed, setSpeed] = useState(0.5);
   const [loop, setLoop] = useState(true);
-  const [tab, setTab] = useState<'measure' | 'details'>(item?.purpose === 'form' ? 'measure' : 'details');
+  const [tab, setTab] = useState<'measure' | 'quality' | 'details'>(item?.purpose === 'form' ? 'measure' : 'details');
+  const [showSkeleton, setShowSkeleton] = useState(true);
+  const track = usePoseTrack(id);
   const [tool, setTool] = useState<MediaMark['type'] | null>(null);
   const [draft, setDraft] = useState<Draft & { times: number[] } | null>(null);
   const [label, setLabel] = useState('');
@@ -293,6 +300,7 @@ export default function MediaViewer({ id, list }: { id: string; list?: string[] 
             ) : (
               <img src={url} alt={title} draggable={false} />
             )}
+            {url && track && showSkeleton && <PoseLayer lm={isVideo ? landmarksAt(track, t) : (track.frames[0]?.lm ?? null)} width={item.width} height={item.height} boxW={box.w} side={nearSide(track)} />}
             {url && (
               <MarkLayer item={item} marks={visible} t={time} boxW={box.w} draft={draft} selected={selected} onTap={onTap} onSelect={tool ? undefined : setSelected} onDrag={(mid, i, p) => editMarks((ms) => ms.map((m) => (m.id === mid ? { ...m, points: m.points.map((q, j) => (j === i ? p : q)) } : m)))} />
             )}
@@ -320,13 +328,33 @@ export default function MediaViewer({ id, list }: { id: string; list?: string[] 
             label="Panel"
             options={[
               { value: 'measure', label: <><Icon name="angle" size={15} /> Measure</> },
+              { value: 'quality', label: <><Icon name="check" size={15} /> Quality</> },
               { value: 'details', label: <><Icon name="edit" size={15} /> Details</> },
             ]}
           />
         </div>
 
-        {tab === 'measure' ? (
+        {tab === 'quality' ? (
+          <div className="side-section">
+            <QualityPanel item={item} track={track} />
+          </div>
+        ) : tab === 'measure' ? (
           <>
+            <div className="side-section">
+              <h4>Joints</h4>
+              <PosePanel
+                item={item}
+                track={track}
+                t={t}
+                duration={duration || video?.duration || 0}
+                seek={seek}
+                marks={marks}
+                showSkeleton={showSkeleton}
+                setShowSkeleton={setShowSkeleton}
+                onAddMarks={(add) => editMarks((ms) => [...ms.filter((m) => !(m.source === 'pose' && add.some((a) => a.label === m.label && a.type === m.type))), ...add])}
+                onSetPhases={(phase0, phase1) => void updateMedia(item.id, { phase0: Math.round(phase0 * 1000) / 1000, phase1: Math.round(phase1 * 1000) / 1000 })}
+              />
+            </div>
             <div className="side-section">
               <div className="row between">
                 <h4>Draw</h4>

@@ -79,9 +79,10 @@ export async function updateMedia(id: string, patch: Partial<Omit<MediaItem, 'id
 }
 
 export async function deleteMedia(id: string): Promise<void> {
-  await db.transaction('rw', db.media, db.mediaBlobs, async () => {
+  await db.transaction('rw', db.media, db.mediaBlobs, db.poses, async () => {
     await db.media.delete(id);
     await db.mediaBlobs.delete(id);
+    await db.poses.delete(id);
   });
   dropThumb(id);
 }

@@ -2,6 +2,7 @@
 // and video when there are any.
 import { strFromU8, strToU8 } from 'fflate';
 import { db, type Activity, type MeasurementEntry, type MediaItem, type MetricPoint, type Note, type Setting } from './db';
+import type { PoseTrack } from '../vision/analysis';
 import { migrateNoteIds } from './migrate';
 import { isZip, makeZip, readZip, type ZipEntry } from './zip';
 
@@ -16,6 +17,8 @@ export interface Backup {
   measurements?: MeasurementEntry[];
   /** Photo and video details (files are next to the JSON in a ZIP backup). */
   media?: Omit<MediaItem, 'thumb'>[];
+  /** Joint positions found by the pose tracker, per photo or video. */
+  poses?: PoseTrack[];
 }
 
 /** Files that came with a ZIP backup, by media id. */
@@ -59,6 +62,7 @@ export function parseBackup(text: string): Backup {
     settings: Array.isArray(data.settings) ? data.settings : [],
     measurements: Array.isArray(data.measurements) ? data.measurements : [],
     media: Array.isArray(data.media) ? data.media : [],
+    poses: Array.isArray(data.poses) ? data.poses : [],
   };
 }
 
@@ -95,7 +99,8 @@ export async function makeMediaBackup(onProgress?: (done: number, total: number)
     entries.push({ name: `media/${m.id}.${extOf(m.mime)}`, data: file });
     if (thumb) entries.push({ name: `thumbs/${m.id}.jpg`, data: thumb });
   }
-  entries.unshift({ name: 'backup.json', data: strToU8(JSON.stringify({ ...b, media: meta }, null, 1)), compress: true });
+  const poses = (await db.poses.toArray()).filter((p) => meta.some((m) => m.id === p.id));
+  entries.unshift({ name: 'backup.json', data: strToU8(JSON.stringify({ ...b, media: meta, poses })), compress: true });
   return makeZip(entries, onProgress);
 }
 
@@ -124,9 +129,9 @@ export async function restoreBackup(b: Backup, mode: 'merge' | 'replace' = 'merg
       const typed = blob.type ? blob : new Blob([blob], { type: m.mime });
       return { item: { ...m, tags: Array.isArray(m.tags) ? m.tags : [], thumb: files!.thumbs.get(m.id) ? new Blob([files!.thumbs.get(m.id)!], { type: 'image/jpeg' }) : undefined } as MediaItem, blob: typed };
     });
-  await db.transaction('rw', [db.notes, db.metrics, db.activities, db.settings, db.measurements, db.media, db.mediaBlobs], async () => {
+  await db.transaction('rw', [db.notes, db.metrics, db.activities, db.settings, db.measurements, db.media, db.mediaBlobs, db.poses], async () => {
     if (mode === 'replace') {
-      await Promise.all([db.notes.clear(), db.metrics.clear(), db.activities.clear(), db.measurements.clear(), db.media.clear(), db.mediaBlobs.clear()]);
+      await Promise.all([db.notes.clear(), db.metrics.clear(), db.activities.clear(), db.measurements.clear(), db.media.clear(), db.mediaBlobs.clear(), db.poses.clear()]);
     }
     const notes = b.notes
       .filter((n) => n && typeof n.id === 'string' && typeof n.date === 'number')
@@ -148,13 +153,15 @@ export async function restoreBackup(b: Backup, mode: 'merge' | 'replace' = 'merg
     await db.measurements.bulkPut((b.measurements ?? []).filter((m) => m && typeof m.id === 'string' && typeof m.date === 'number' && m.values && typeof m.values === 'object'));
     await db.mediaBlobs.bulkPut(media.map((m) => ({ id: m.item.id, blob: m.blob })));
     await db.media.bulkPut(media.map((m) => m.item));
+    const restored = new Set(media.map((m) => m.item.id));
+    await db.poses.bulkPut((b.poses ?? []).filter((p) => p && restored.has(p.id) && Array.isArray(p.frames)));
   });
   return { notes: b.notes.length, metrics: b.metrics.length, media: media.length };
 }
 
 export async function clearAll(): Promise<void> {
-  await db.transaction('rw', [db.notes, db.metrics, db.activities, db.settings, db.measurements, db.media, db.mediaBlobs], async () => {
-    await Promise.all([db.notes.clear(), db.metrics.clear(), db.activities.clear(), db.settings.clear(), db.measurements.clear(), db.media.clear(), db.mediaBlobs.clear()]);
+  await db.transaction('rw', [db.notes, db.metrics, db.activities, db.settings, db.measurements, db.media, db.mediaBlobs, db.poses], async () => {
+    await Promise.all([db.notes.clear(), db.metrics.clear(), db.activities.clear(), db.settings.clear(), db.measurements.clear(), db.media.clear(), db.mediaBlobs.clear(), db.poses.clear()]);
   });
 }
 

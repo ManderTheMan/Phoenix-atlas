@@ -1462,3 +1462,65 @@ ol.steps code, p code, li code { font-family: var(--mono); font-size: 12px; back
   .mv-nav { width: 32px; height: 44px; }
   .then-now { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* ---------------------------------------------------------------- pose tracking & quality */
+
+.pose-layer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.pose-bone { stroke: rgba(120, 220, 255, 0.75); stroke-linecap: round; }
+.pose-bone.near { stroke: #7fe3ff; }
+.pose-bone.unsure { stroke: rgba(255, 255, 255, 0.35); stroke-dasharray: 4 4; }
+.pose-joint { fill: #e9fbff; stroke: rgba(0, 40, 60, 0.7); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.pose-joint.near { fill: #7fe3ff; }
+.pose-joint.unsure { fill: rgba(255, 255, 255, 0.35); }
+.progress { height: 6px; border-radius: 999px; background: #232a37; overflow: hidden; }
+.progress span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width 0.2s; }
+.live-angles { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px; }
+.live-angle { border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; display: flex; flex-direction: column; }
+.live-angle strong { font-size: 16px; }
+.angle-chart { width: 100%; height: auto; display: block; cursor: pointer; background: #0f131b; border: 1px solid var(--line); border-radius: 8px; touch-action: none; }
+.angle-line { fill: none; stroke: #7fe3ff; stroke-width: 1.8; }
+.rep-band { fill: rgba(255, 179, 71, 0.1); }
+.rep-band.odd { fill: rgba(255, 179, 71, 0.18); }
+.rep-dot { fill: #ffb347; }
+.chart-grid { stroke: rgba(255, 255, 255, 0.07); }
+.chart-tick { fill: var(--muted); font-size: 8.5px; font-family: var(--font); }
+.chart-cursor { stroke: #fff; stroke-width: 1; opacity: 0.8; }
+.rep-table td, .rep-table th { padding: 4px 6px; font-size: 12.5px; }
+.rep-table tr.clickable { cursor: pointer; }
+.rep-table tr.clickable:hover td { background: var(--panel-2); }
+.verdict { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; font-size: 13px; border: 1px solid var(--line-2); }
+.verdict.pass { border-color: rgba(34, 181, 164, 0.5); color: #8fe3d7; }
+.verdict.warn { border-color: rgba(255, 179, 71, 0.5); color: #ffd38a; }
+.verdict.fail { border-color: rgba(224, 79, 79, 0.55); color: #ff9a9a; }
+.checks { display: flex; flex-direction: column; gap: 4px; }
+.check-row { border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.check-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 9px; background: none; border: 0; cursor: pointer; text-align: left; }
+.check-head:hover { background: var(--panel-2); }
+.check-dot { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; flex: none; color: #0e1117; background: var(--muted); }
+.check-dot.pass { background: var(--good); }
+.check-dot.warn { background: var(--accent-2); }
+.check-dot.fail { background: var(--bad); color: #fff; }
+.check-dot.info { background: #5a9fd8; }
+.check-body { padding: 2px 12px 10px 39px; color: var(--text-2); display: flex; flex-direction: column; gap: 6px; }
+.block { display: block; }
+
+/* ---------------------------------------------------------------- dataset */
+
+.shot-list, .quality-list { display: flex; flex-direction: column; gap: 6px; }
+.shot { display: flex; gap: 10px; align-items: flex-start; padding: 6px 2px; }
+.shot .check-dot { margin-top: 1px; }
+.shot.done .small { color: var(--text-2); }
+.quality-row { display: flex; align-items: center; gap: 10px; background: none; border: 1px solid var(--line); border-radius: 10px; padding: 6px; cursor: pointer; text-align: left; min-width: 0; }
+.quality-row:hover { background: var(--panel-2); }
+.quality-row .mthumb { width: 46px; flex: none; pointer-events: none; }
+.q-text { display: inline-flex; align-items: center; gap: 4px; }
+.q-text.pass { color: #8fe3d7; }
+.q-text.warn { color: #ffd38a; }
+.q-text.fail { color: #ff9a9a; }
+.q-text.info { color: var(--muted); }
+.delta-chip.q-pass strong { color: #8fe3d7; }
+.delta-chip.q-warn strong { color: #ffd38a; }
+.delta-chip.q-fail strong { color: #ff9a9a; }
+.export-opts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; }
+@media (max-width: 620px) { .export-opts { grid-template-columns: minmax(0, 1fr); } }
+.quality-row .thumb-badge { display: none; }

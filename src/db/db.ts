@@ -2,6 +2,7 @@
 // unless you export it.
 import Dexie, { type Table } from 'dexie';
 import type { CategoryId } from '../lib/feeling';
+import type { PoseTrack } from '../vision/analysis';
 import { migrateNoteIds } from './migrate';
 
 export type Vec3 = [number, number, number];
@@ -115,6 +116,8 @@ export interface MediaMark {
   t?: number;
   times?: number[];
   label?: string;
+  /** Placed by the pose tracker rather than by hand. */
+  source?: 'pose';
 }
 
 /** A photo or video. The file itself is in `mediaBlobs` so lists stay light. */
@@ -169,6 +172,7 @@ export class AtlasDB extends Dexie {
   measurements!: Table<MeasurementEntry, string>;
   media!: Table<MediaItem, string>;
   mediaBlobs!: Table<MediaBlob, string>;
+  poses!: Table<PoseTrack, string>;
 
   constructor(name = 'phoenix-atlas') {
     super(name);
@@ -186,6 +190,8 @@ export class AtlasDB extends Dexie {
     this.version(3).stores({ measurements: 'id, date' });
     // v4: progress photos and form videos
     this.version(4).stores({ media: 'id, date, purpose, pattern, pose, noteId, *tags', mediaBlobs: 'id' });
+    // v5: joint positions found by the pose tracker, one track per photo or video
+    this.version(5).stores({ poses: 'id' });
   }
 }
 

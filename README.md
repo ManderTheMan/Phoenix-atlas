@@ -17,11 +17,11 @@ change, import your Google health data and export PDF reports to share with your
 | --- | --- | --- |
 | ![Training](docs/training.jpg) | ![Mobile](docs/mobile.jpg) | ![Report](docs/report.jpg) |
 
-| Progress photos | Form check: angles and leverage | Then and now |
+| Progress photos | Form check: joint tracking and angles | Then and now |
 | --- | --- | --- |
 | ![Media](docs/media.jpg) | ![Form check](docs/form-check.jpg) | ![Compare](docs/compare.jpg) |
 
-The demo photos are renders of the 3D body fitted to the demo measurements, and the demo clips are drawn from the squat model.
+The demo photos are renders of the 3D body fitted to the demo measurements, and the demo clips are the 3D body posed by the squat model and filmed side-on.
 
 ## Features
 
@@ -74,6 +74,14 @@ The demo photos are renders of the 3D body fitted to the demo measurements, and 
 - Photos and videos show up where they belong: the latest set in your Profile, your clips under each movement pattern, and attachments on notes (a photo of a bruise or swelling, a clip from a workout).
 - Coach reports can include then-and-now photos and form-check stills with their measurements. This section is off by default, and you can keep any photo or video out of reports.
 - Photos are re-encoded when saved, which strips location data. A privacy blur hides body photos in lists until you tap them.
+
+**Computer vision and datasets**
+- **Automatic joint tracking.** An on-device pose model (MediaPipe Pose Landmarker, run in the browser; nothing is uploaded) finds 33 body landmarks in every frame. The viewer draws the skeleton over the video, shows your knee, hip, torso and shin angles as it plays, charts the main joint angle through the clip, and finds each rep with its depth and tempo (seconds down and up).
+- **One tap to measurements.** Turn the tracker's result into start and bottom markers (so the leverage model follows your video) or into Knee, Hip and Torso lean measurements that chart over time. It also compares itself with the angles you drew by hand.
+- **Capture-quality checks.** Each photo and video is checked for resolution, frame rate, framing, body size, camera angle, steadiness, joint confidence, lighting and sharpness, with why each matters and what to change next time.
+- **Test the tracker.** The 3D body is posed by the squat model, filmed side-on and tracked; because its true joint angles are known, you see the tracker's error and bias.
+- **Build a public dataset.** The Dataset tab walks you through a shot list, checks every file, and exports a ZIP with the media, metadata, pose and measurement annotations, rep timings, quality checks, a dataset card, a datasheet and a license. Faces can be pixelated, dates coarsened, and location metadata is removed from every file (on import as well).
+- **[The dataset guide](docs/dataset/README.md)** teaches how the computer vision works, how to set up and film, what to capture, how to check and annotate it, how accurate the tracker is, and how to publish.
 
 **Notes**
 - Each note is dated (and editable) and has a type (workout, symptom, movement, energy, general health, recovery), a feeling from −5 to +5, sensations (pain, tight, numb, pumped, strong…), an optional 0–10 intensity, one or more body locations, free text, tags, workout details (exercises, sets, reps, load, RPE) and custom measurements.
@@ -166,7 +174,7 @@ If you use the Google Health sync, add the deployed origin to your OAuth client.
 ## Development
 
 ```bash
-npm test           # unit tests (parsers, analysis, notes, reports, anatomy, body fitting, movement models, media)
+npm test           # unit tests (parsers, analysis, notes, reports, anatomy, body fitting, movement models, media, vision, datasets)
 npm run typecheck
 npm run build      # type-checks and builds to dist/
 ```
@@ -178,7 +186,10 @@ npm run build      # type-checks and builds to dist/
 | `src/movement/` | Muscle groups, the movement pattern library, the biomechanics models, effort estimates and training analysis. |
 | `src/profile/` | Profile and measurement storage. |
 | `src/media/` | Photo and video storage, the geometry of angle, lean and path measurements, photo and video processing (EXIF and MP4 dates, thumbnails, stills), and the demo media. |
-| `src/components/media/` | The camera, the viewer with its measuring tools, the comparison and time-lapse screens. |
+| `src/components/media/` | The camera, the viewer with its measuring tools, joint tracking and quality panels, the comparison and time-lapse screens, and the Dataset tab. |
+| `src/vision/` | Pose tracking (MediaPipe runner and job queue), joint angles, rep detection, quality checks, and the tracker test. |
+| `src/dataset/` | Dataset export: ids, metadata, dataset card, datasheet, face pixelation. |
+| `scripts/vision-assets.mjs` | Copies the pose-tracking WebAssembly runtime into `public/vision/` and downloads the pinned model (checked by SHA-256). Runs before `dev` and `build`. |
 | `scripts/build-landmarks.ts` | Measures the reference body (joint centres, segment lengths and girths) into `src/anatomy/landmarks.json`. |
 | `scripts/build-atlas.ts` | Builds `public/atlas/*.bin` and `catalog.json` from the anatomical dataset. |
 | `src/components/viewer/` | The react-three-fiber body viewer, layer panel, time bar and structure panel. |
@@ -197,6 +208,10 @@ Estimated effort is a joint's torque as a share of a typical maximum for a train
 ### How body fitting works
 
 The reference body is described by a simple skeleton, with joint centres measured from the model (for example a sphere fitted to each femoral head). Every vertex follows the up-to-three segments nearest to it. Arms only follow arm segments and legs only follow leg segments, so a hand resting against the thigh doesn't move with the leg. Notes keep their points on the reference body, and the points are mapped onto the fitted body for display.
+
+### How the joint tracking works
+
+`scripts/vision-assets.mjs` puts the MediaPipe runtime and the Pose Landmarker (full) model in `public/vision/` (not committed), so the app serves them itself and caches them for offline use the first time they're needed. A video is analysed by seeking through it at 15 frames per second and running the model on each frame. Angles are computed in pixels from the near-side landmarks; reps are dips of at least 25° in the movement's main joint angle (knee, hip or elbow). The synthetic squat used to test the tracker is the atlas skin posed with linear-blend skinning from the squat model (`src/media/synthetic.ts`), so its true joint positions are known in every frame. The [dataset guide](docs/dataset/README.md) explains the method and its accuracy.
 
 ### How the photo and video tools work
 
@@ -230,6 +245,8 @@ To rebuild the model:
 npm run anatomy:fetch   # downloads the data release from npm into .cache/anatomy (about 70 MB)
 npm run model           # checks the checksums, writes public/atlas/*.bin and src/anatomy/catalog.json, then re-measures the landmarks
 ```
+
+Pose tracking uses **MediaPipe Tasks Vision** and the **Pose Landmarker** model by Google (Apache-2.0), downloaded at build time.
 
 Notes saved with the first, procedural body model are migrated automatically. Their structures are mapped to the closest atlas structure, and their pins are moved onto the new surface.
 

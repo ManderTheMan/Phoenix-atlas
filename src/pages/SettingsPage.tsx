@@ -112,7 +112,7 @@ export default function SettingsPage() {
           <p className="dim small">
             Load three months of example notes (a recovering knee, a lower-back flare-up, a shoulder pinch, workouts, energy and sleep),
             matching health metrics, measurements, progress photos and squat clips to explore the atlas, insights, media and reports. The demo
-            photos are renders of the 3D body, and the clips are drawn from the movement model. Demo items are tagged <code>#demo</code> and
+            photos are renders of the 3D body, and the clips show it posed by the squat model. Demo items are tagged <code>#demo</code> and
             can be removed in one tap.
           </p>
           <div className="row wrap">
@@ -174,6 +174,7 @@ export default function SettingsPage() {
             .
           </p>
           <p className="dim small">
+            Joint tracking uses MediaPipe Pose Landmarker by Google (Apache-2.0), run on this device.{' '}
             {STRUCTURES.length.toLocaleString()} structures. The cerebral cortex in the source isn’t openly licensed, so the cerebral hemispheres
             are an approximate shape fitted to the skull. The upstream data release hasn’t had a formal anatomical review yet. This is an
             anatomically detailed model for education and personal tracking, not a medical device.

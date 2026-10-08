@@ -118,6 +118,8 @@ const SEGMENTS: [string, string, string][] = [
   ]),
 ];
 const SEG = Object.fromEntries(SEGMENTS.map(([n], i) => [n, i])) as Record<string, number>;
+/** The skeleton's segments in weight-index order: [name, proximal joint, distal joint]. */
+export const SKELETON: readonly (readonly [string, string, string])[] = SEGMENTS;
 const sideSeg = (s: Side, n: string) => SEG[`${n}_${s}`];
 
 // Which segments a structure may follow. Limbs only follow their own limb (so

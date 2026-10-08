@@ -7,8 +7,10 @@ import Icon from '../Icon';
 export default function MediaThumb({ item, onClick, caption, className = '' }: { item: MediaItem; onClick?: () => void; caption?: string; className?: string }) {
   const blur = useMediaUI((s) => s.blurBody) && item.purpose === 'progress';
   const src = thumbUrl(item);
+  // inside another button (a list row) it is just a picture
+  const Tag = onClick ? 'button' : 'span';
   return (
-    <button className={`mthumb ${blur ? 'blurred' : ''} ${className}`} onClick={onClick} title={caption}>
+    <Tag className={`mthumb ${blur ? 'blurred' : ''} ${className}`} onClick={onClick} title={caption}>
       {src ? <img src={src} alt="" loading="lazy" /> : <Icon name={item.kind === 'video' ? 'video' : 'image'} />}
       {item.kind === 'video' && (
         <span className="thumb-badge">
@@ -21,6 +23,6 @@ export default function MediaThumb({ item, onClick, caption, className = '' }: {
         </span>
       )}
       {caption && <span className="mthumb-cap">{caption}</span>}
-    </button>
+    </Tag>
   );
 }

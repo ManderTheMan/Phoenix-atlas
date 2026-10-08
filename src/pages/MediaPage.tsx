@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import LineChart from '../components/charts/LineChart';
 import { Check, Empty, Seg } from '../components/common';
 import Icon from '../components/Icon';
+import DatasetTab from '../components/media/DatasetTab';
 import MediaThumb from '../components/media/MediaThumb';
 import type { MediaItem, PoseId } from '../db/db';
 import { DAY, formatDate, formatShort } from '../lib/dates';
@@ -100,6 +101,7 @@ export default function MediaPage() {
             { value: 'body', label: <><Icon name="user" size={15} /> Body</> },
             { value: 'form', label: <><Icon name="movement" size={15} /> Form</> },
             { value: 'all', label: <><Icon name="image" size={15} /> All</> },
+            { value: 'dataset', label: <><Icon name="share" size={15} /> Dataset</> },
           ]}
         />
 
@@ -111,6 +113,8 @@ export default function MediaPage() {
           <BodyTab media={media} entries={entries} units={profile.units} onTake={takePhotos} />
         ) : tab === 'form' ? (
           <FormTab media={media} pattern={pattern} setPattern={setPattern} onRecord={recordForm} units={profile.units} onMovement={(p) => ui.openMovement(p)} />
+        ) : tab === 'dataset' ? (
+          <DatasetTab media={media} />
         ) : (
           <AllTab media={media} filter={filter} setFilter={setFilter} />
         )}

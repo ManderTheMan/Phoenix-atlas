@@ -20,6 +20,7 @@ import {
 } from '../../media/media';
 import { useMediaUI, type CameraRequest } from '../../media/mediaUI';
 import { photoFromVideo, processPhoto, processVideo, recorderMime, takenAt, type Processed } from '../../media/process';
+import { scrubVideo } from '../../media/scrub';
 import { PATTERN_BY_ID, PATTERNS, type PatternId } from '../../movement/patterns';
 import { useUI } from '../../state/ui';
 import { Seg } from '../common';
@@ -322,8 +323,10 @@ export default function CameraSheet({ req }: { req: CameraRequest }) {
 
   const processFile = async (f: File): Promise<Shot> => {
     if (f.type.startsWith('video/') || /\.(mp4|mov|m4v|webm)$/i.test(f.name)) {
-      const p = await processVideo(f);
-      return { ...p, kind: 'video', url: URL.createObjectURL(f), preview: p.thumb && URL.createObjectURL(p.thumb), source: 'upload' };
+      // phones store the location (and more) inside video files: drop it on the way in
+      const { blob: clean } = await scrubVideo(f.type ? f : new File([f], f.name, { type: /\.mov$/i.test(f.name) ? 'video/quicktime' : 'video/mp4' }));
+      const p = await processVideo(clean);
+      return { ...p, kind: 'video', url: URL.createObjectURL(clean), preview: p.thumb && URL.createObjectURL(p.thumb), source: 'upload' };
     }
     const p = await processPhoto(f);
     const url = URL.createObjectURL(p.blob);

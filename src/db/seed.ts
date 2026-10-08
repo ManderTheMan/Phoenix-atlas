@@ -320,8 +320,9 @@ export async function clearDemoData(): Promise<void> {
     await db.measurements.filter((m) => m.source === 'demo').delete();
   });
   const demoMedia = (await db.media.filter((m) => m.source === 'demo').toArray()).map((m) => m.id);
-  await db.transaction('rw', db.media, db.mediaBlobs, async () => {
+  await db.transaction('rw', db.media, db.mediaBlobs, db.poses, async () => {
     await db.media.bulkDelete(demoMedia);
     await db.mediaBlobs.bulkDelete(demoMedia);
+    await db.poses.bulkDelete(demoMedia);
   });
 }

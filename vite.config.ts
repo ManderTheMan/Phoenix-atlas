@@ -28,7 +28,16 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,wasm,bin}'],
+        // the pose model and its runtime (~35 MB) are cached the first time they're used, not up front
+        globIgnores: ['**/vision/**'],
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.pathname.includes('/vision/'),
+            handler: 'CacheFirst',
+            options: { cacheName: 'phoenix-vision', expiration: { maxEntries: 12 } },
+          },
+        ],
       },
     }),
   ],
