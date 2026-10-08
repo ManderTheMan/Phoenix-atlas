@@ -11,7 +11,7 @@ import { scrubVideo } from '../media/scrub';
 import { MEASURE_BY_KEY, measureLabel, type MeasureKey } from '../profile/profile';
 import { summarizeReps } from '../vision/analysis';
 import { qualityChecks } from '../vision/quality';
-import { datasetIds, datasheet, formatWhen, licenseText, marksFile, metadataRows, poseFile, readme, repsFile, SCHEMA, toCsv, type CardInfo, type DatePrecision, type Entry, type License } from './card';
+import { APP_URL, datasetIds, datasheet, formatWhen, licenseText, marksFile, metadataRows, poseFile, readme, repsFile, SCHEMA, toCsv, type CardInfo, type DatePrecision, type Entry, type License } from './card';
 import { pixelatePhoto, pixelateVideo } from './privacy';
 
 export interface ExportOptions {
@@ -36,8 +36,6 @@ export interface ExportReport {
   skipped: { id: string; reason: string }[];
   bytes: number;
 }
-
-export const APP_URL = 'https://github.com/ManderTheMan/Phoenix-atlas';
 
 /** The files an export would include, before privacy steps (for the preview). */
 export async function exportCandidates(o: Pick<ExportOptions, 'purposes' | 'includeSynthetic'>): Promise<MediaItem[]> {

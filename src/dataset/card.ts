@@ -11,6 +11,9 @@ import type { Check } from '../vision/quality';
 export type License = 'CC-BY-4.0' | 'CC-BY-NC-4.0' | 'CC0-1.0';
 export type DatePrecision = 'exact' | 'day' | 'relative';
 
+/** Where the app and its dataset guide live. */
+export const APP_URL = 'https://github.com/ManderTheMan/Phoenix-atlas';
+
 export const LICENSES: Record<License, { name: string; url: string; hf: string; summary: string }> = {
   'CC-BY-4.0': { name: 'Creative Commons Attribution 4.0', url: 'https://creativecommons.org/licenses/by/4.0/', hf: 'cc-by-4.0', summary: 'Anyone may use and adapt the data, including commercially, if they credit you.' },
   'CC-BY-NC-4.0': { name: 'Creative Commons Attribution-NonCommercial 4.0', url: 'https://creativecommons.org/licenses/by-nc/4.0/', hf: 'cc-by-nc-4.0', summary: 'Anyone may use and adapt the data for non-commercial purposes, if they credit you.' },

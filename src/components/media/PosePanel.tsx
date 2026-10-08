@@ -133,7 +133,7 @@ export default function PosePanel({
             Stop
           </button>
         </div>
-        <p className="tiny muted">Runs on this device; nothing is uploaded. The first run loads the model (about 9 MB).</p>
+        <p className="tiny muted">Runs on this device; nothing is uploaded. The first run loads the model and its runtime (about 22 MB), then works offline.</p>
       </div>
     );
   }
