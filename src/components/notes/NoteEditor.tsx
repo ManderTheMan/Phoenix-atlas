@@ -1,12 +1,15 @@
 import { useMemo, useState } from 'react';
 import { STRUCTURE_BY_ID } from '../../anatomy/catalog';
-import type { ExerciseEntry, Measurement, Note } from '../../db/db';
+import { uid, type ExerciseEntry, type Measurement, type Note } from '../../db/db';
 import type { NoteDraft } from '../../db/notes';
 import { fromLocalInput, toLocalInput, formatShort } from '../../lib/dates';
 import { CATEGORIES, SENSATIONS, SENSATION_BY_ID, feelingColor } from '../../lib/feeling';
 import { useTagCounts } from '../../hooks/useData';
+import { useMedia } from '../../media/media';
+import { useMediaUI } from '../../media/mediaUI';
 import { Check, ConfirmButton } from '../common';
 import Icon from '../Icon';
+import MediaThumb from '../media/MediaThumb';
 import { FeelingPicker, LocationList, NoteLinkPicker, StructurePicker, TagInput } from './inputs';
 
 const MEASURE_PRESETS: Measurement[] = [
@@ -245,6 +248,8 @@ export default function NoteEditor({ draft, notes, onChange, onSave, onCancel, o
         </div>
       </details>
 
+      <NoteMedia draft={draft} onChange={onChange} />
+
       <div className="field">
         <span className="label">Linked notes</span>
         {linked.length > 0 && (
@@ -284,6 +289,46 @@ export default function NoteEditor({ draft, notes, onChange, onSave, onCancel, o
             <Icon name="trash" /> Delete
           </ConfirmButton>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** Photos and videos attached to the note (a new note gets its id early so they can attach). */
+function NoteMedia({ draft, onChange }: { draft: NoteDraft; onChange: (patch: Partial<NoteDraft>) => void }) {
+  const media = useMedia();
+  const mui = useMediaUI();
+  const noteId = draft.id ?? draft.pendingId;
+  const attached = noteId ? media.filter((m) => m.noteId === noteId) : [];
+  const capture = (mode: 'photo' | 'video', upload = false) => {
+    let id = noteId;
+    if (!id) {
+      id = uid();
+      onChange({ pendingId: id });
+    }
+    const workout = draft.category === 'workout';
+    mui.openCamera({ mode, purpose: workout && mode === 'video' ? 'form' : 'other', noteId: id, upload });
+  };
+  return (
+    <div className="field">
+      <span className="label">Photos &amp; videos</span>
+      {attached.length > 0 && (
+        <div className="thumb-row">
+          {attached.map((m) => (
+            <MediaThumb key={m.id} item={m} onClick={() => mui.openViewer(m.id, attached.map((x) => x.id))} />
+          ))}
+        </div>
+      )}
+      <div className="row wrap" style={{ gap: 6 }}>
+        <button className="btn small" onClick={() => capture('photo')}>
+          <Icon name="camera" /> Photo
+        </button>
+        <button className="btn small" onClick={() => capture('video')}>
+          <Icon name="video" /> Video
+        </button>
+        <button className="btn small ghost" onClick={() => capture('photo', true)}>
+          <Icon name="upload" /> Import
+        </button>
       </div>
     </div>
   );

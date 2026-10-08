@@ -100,12 +100,75 @@ export interface MeasurementEntry {
   source?: string;
 }
 
+export type MediaKind = 'photo' | 'video';
+/** Progress = body photos taken the same way over time; form = a movement filmed to check technique. */
+export type MediaPurpose = 'progress' | 'form' | 'other';
+export type PoseId = 'front' | 'side' | 'back' | 'other';
+export type CameraAngle = 'side' | 'front' | 'back' | 'angle';
+
+/** A measurement drawn on a photo or video frame. Points are fractions (0–1) of the frame's width and height. */
+export interface MediaMark {
+  id: string;
+  type: 'angle' | 'line' | 'path';
+  points: [number, number][];
+  /** Video time (s) the mark was drawn at; a path has one time per point. */
+  t?: number;
+  times?: number[];
+  label?: string;
+}
+
+/** A photo or video. The file itself is in `mediaBlobs` so lists stay light. */
+export interface MediaItem {
+  id: string;
+  kind: MediaKind;
+  purpose: MediaPurpose;
+  /** When it was taken. */
+  date: number;
+  createdAt: number;
+  updatedAt: number;
+  mime: string;
+  size: number;
+  width: number;
+  height: number;
+  /** Seconds (videos). */
+  duration?: number;
+  /** Small JPEG preview. */
+  thumb?: Blob;
+  title?: string;
+  notes?: string;
+  tags: string[];
+  pose?: PoseId;
+  pattern?: string;
+  variant?: string;
+  /** kg */
+  load?: number;
+  reps?: number;
+  camera?: CameraAngle;
+  noteId?: string;
+  marks?: MediaMark[];
+  /** Video times (s) of the pattern's start and end-range positions (e.g. standing and the bottom of a squat). */
+  phase0?: number;
+  phase1?: number;
+  /** Shift and zoom that line this photo up with others of the same pose (fractions of the frame). */
+  align?: { x: number; y: number; s: number };
+  /** Kept out of coach reports. */
+  private?: boolean;
+  source?: string;
+}
+
+export interface MediaBlob {
+  id: string;
+  blob: Blob;
+}
+
 export class AtlasDB extends Dexie {
   notes!: Table<Note, string>;
   metrics!: Table<MetricPoint, string>;
   activities!: Table<Activity, string>;
   settings!: Table<Setting, string>;
   measurements!: Table<MeasurementEntry, string>;
+  media!: Table<MediaItem, string>;
+  mediaBlobs!: Table<MediaBlob, string>;
 
   constructor(name = 'phoenix-atlas') {
     super(name);
@@ -121,6 +184,8 @@ export class AtlasDB extends Dexie {
       .upgrade((tx) => tx.table('notes').toCollection().modify((n: Note) => void migrateNoteIds(n)));
     // v3: body measurements for the profile
     this.version(3).stores({ measurements: 'id, date' });
+    // v4: progress photos and form videos
+    this.version(4).stores({ media: 'id, date, purpose, pattern, pose, noteId, *tags', mediaBlobs: 'id' });
   }
 }
 

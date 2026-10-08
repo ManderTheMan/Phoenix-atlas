@@ -17,7 +17,8 @@ export function Modal({
   actions?: ReactNode;
 }) {
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    // a photo viewer or the camera open on top handles its own Escape
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !document.querySelector('.mv, .cam') && onClose();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);

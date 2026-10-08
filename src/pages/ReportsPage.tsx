@@ -10,7 +10,14 @@ import { DAY, dayKey, formatDate, formatShort, parseDayKey, startOfDay } from '.
 import { CATEGORIES, CATEGORY_BY_ID, feelingColor, formatFeeling, feelingLabel } from '../lib/feeling';
 import { buildReportData, defaultReportOptions, type ReportOptions, type ReportSections } from '../report/data';
 import { notesToCsv, reportSummaryText } from '../report/export';
-import { useBody } from '../profile/profile';
+import MediaThumb from '../components/media/MediaThumb';
+import { getMediaBlob, markName, markValue, measurementChanges, POSE_BY_ID, useMedia } from '../media/media';
+import { useMediaUI } from '../media/mediaUI';
+import { stillOf } from '../media/process';
+import { PATTERN_BY_ID, type PatternId } from '../movement/patterns';
+import { formatMeasure, MEASURE_BY_KEY, measureLabel, useBody } from '../profile/profile';
+import type { MediaItem } from '../db/db';
+import type { Snapshots } from '../report/pdf';
 import { useUI } from '../state/ui';
 
 const SECTION_LABELS: [keyof ReportSections, string][] = [
@@ -21,6 +28,7 @@ const SECTION_LABELS: [keyof ReportSections, string][] = [
   ['metrics', 'Health data'],
   ['workouts', 'Training log'],
   ['movement', 'Movement patterns & muscle volume'],
+  ['media', 'Progress photos & form checks'],
   ['notes', 'Notes'],
 ];
 
@@ -40,7 +48,8 @@ export default function ReportsPage() {
   const [opts, setOpts] = useState<ReportOptions>(() => defaultReportOptions(30));
   const [preset, setPreset] = useState<number | null>(30);
   const [busy, setBusy] = useState<string | null>(null);
-  const { shape } = useBody();
+  const { shape, entries, profile } = useBody();
+  const media = useMedia();
 
   // remember who the report is for / from
   useEffect(() => {
@@ -56,14 +65,14 @@ export default function ReportsPage() {
     set({ from: today - (days - 1) * DAY, to: today + DAY - 1 });
   };
 
-  const data = useMemo(() => buildReportData(notes, metrics, activities, opts), [notes, metrics, activities, opts]);
+  const data = useMemo(() => buildReportData(notes, metrics, activities, opts, media), [notes, metrics, activities, opts, media]);
   const fileBase = `phoenix-atlas-report-${dayKey(opts.from)}_${dayKey(opts.to)}`;
 
   const makePdf = async (): Promise<Blob> => {
     await setSetting('reportRecipient', opts.recipient);
     await setSetting('reportAuthor', opts.author);
     const [{ generateReportPdf }, { renderBodySnapshots }] = await Promise.all([import('../report/pdf'), import('../report/snapshot')]);
-    const snaps: { surface?: [string, string]; deep?: [string, string] } = {};
+    const snaps: Snapshots = {};
     if (opts.sections.bodyMap) {
       try {
         snaps.surface = await renderBodySnapshots({ colors: data.colors, notes: data.notes, kind: 'surface', shape });
@@ -72,6 +81,14 @@ export default function ReportsPage() {
       } catch (e) {
         console.warn('Body map rendering failed', e);
         ui.showToast('Body map could not be rendered on this device — exporting without it');
+      }
+    }
+    if (opts.sections.media && (data.media.progress.length || data.media.form.length)) {
+      try {
+        snaps.media = await renderMediaStills(data.media, entries, profile.units);
+      } catch (e) {
+        console.warn('Media stills failed', e);
+        ui.showToast('Some photos could not be added to the PDF');
       }
     }
     return generateReportPdf(data, snaps);
@@ -177,6 +194,7 @@ export default function ReportsPage() {
                     )}
                   </div>
                 ))}
+                {!opts.sections.media && media.length > 0 && <span className="tiny muted">Photos are left out unless you tick them: body photos are private.</span>}
               </div>
             </div>
             <div className="field">
@@ -388,6 +406,7 @@ function ReportPreview({ data }: { data: ReturnType<typeof buildReportData> }) {
           </div>
         </div>
       )}
+      {o.sections.media && (data.media.progress.length > 0 || data.media.form.length > 0) && <MediaPreview data={data} />}
       {o.sections.notes && (
         <div>
           <h3>Notes ({data.notes.length})</h3>
@@ -405,4 +424,68 @@ function ReportPreview({ data }: { data: ReturnType<typeof buildReportData> }) {
       )}
     </div>
   );
+}
+
+function MediaPreview({ data }: { data: ReturnType<typeof buildReportData> }) {
+  const mui = useMediaUI();
+  const items = [...data.media.progress.flatMap((p) => [p.then, p.now].filter(Boolean) as MediaItem[]), ...data.media.form];
+  return (
+    <div>
+      <h3>Progress photos &amp; form checks</h3>
+      <p className="muted small" style={{ margin: '4px 0 8px' }}>
+        {data.media.progress.length ? `${data.media.progress.map((p) => POSE_BY_ID.get(p.pose)?.label).join(', ')} photos, then and now` : ''}
+        {data.media.progress.length && data.media.form.length ? '; ' : ''}
+        {data.media.form.length ? `${data.media.form.length} form check${data.media.form.length > 1 ? 's' : ''} with their measurements` : ''}.
+      </p>
+      <div className="thumb-row">
+        {items.map((m, i) => (
+          <MediaThumb key={`${m.id}-${i}`} item={m} caption={formatShort(m.date)} onClick={() => mui.openViewer(m.id)} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Stills (with drawn measurements) for the PDF. */
+async function renderMediaStills(rm: ReturnType<typeof buildReportData>['media'], entries: ReturnType<typeof useBody>['entries'], units: ReturnType<typeof useBody>['profile']['units']): Promise<NonNullable<Snapshots['media']>> {
+  const still = async (m: MediaItem, t?: number) => {
+    const blob = await getMediaBlob(m.id);
+    if (!blob) return null;
+    const src = await stillOf(m, blob, t, 1000);
+    return { src, w: m.width, h: m.height };
+  };
+  const progress: NonNullable<Snapshots['media']>['progress'] = [];
+  for (const p of rm.progress) {
+    const now = await still(p.now);
+    if (!now) continue;
+    const then = p.then ? await still(p.then) : null;
+    const changes = p.then
+      ? measurementChanges(entries, p.then.date, p.now.date)
+          .map((c) => `${measureLabel(c.key)} ${c.diff > 0 ? '+' : ''}${formatMeasure(c.diff, MEASURE_BY_KEY.get(c.key)!.unit, units)}`)
+          .join('   ')
+      : '';
+    progress.push({ pose: POSE_BY_ID.get(p.pose)?.label ?? p.pose, then: then && p.then ? { ...then, date: p.then.date } : undefined, now: { ...now, date: p.now.date }, changes });
+  }
+  const form: NonNullable<Snapshots['media']>['form'] = [];
+  for (const m of rm.form) {
+    const t = m.kind === 'video' ? (m.phase1 ?? m.marks?.find((k) => k.t !== undefined)?.t ?? (m.duration ?? 0) * 0.4) : undefined;
+    const s = await still(m, t);
+    if (!s) continue;
+    const pattern = m.pattern ? PATTERN_BY_ID.get(m.pattern as PatternId) : undefined;
+    const variant = pattern?.variants.find((v) => v.value === m.variant);
+    const lines = [
+      [variant && pattern!.variants.length > 1 ? variant.label : '', m.load ? `${formatMeasure(m.load, 'kg', units)}${m.reps ? ` x ${m.reps}` : ''}` : ''].filter(Boolean).join(' - '),
+      (m.marks ?? [])
+        .map((k) => {
+          const v = markValue(k, m.width, m.height);
+          return v ? `${markName(k)} ${Math.round(v.value)}${k.type === 'path' ? '%' : '°'}` : '';
+        })
+        .filter(Boolean)
+        .slice(0, 3)
+        .join(', '),
+      m.notes ? m.notes.slice(0, 60) : '',
+    ].filter(Boolean);
+    form.push({ ...s, title: `${pattern?.name ?? 'Form check'} - ${formatDate(m.date)}`, lines });
+  }
+  return { progress, form };
 }

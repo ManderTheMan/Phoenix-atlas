@@ -4,8 +4,13 @@ import { CAPACITY, effortColor, relativeDemand, ROLE_LABEL, type GroupEffort } f
 import type { JointId, ModelResult } from '../../movement/biomech';
 import { GROUP_BY_ID, type GroupId } from '../../movement/groups';
 import { PATTERNS, type PatternDef, type PatternId } from '../../movement/patterns';
+import { formatShort } from '../../lib/dates';
+import { formSeries, markName, markValue, useMedia } from '../../media/media';
+import { useMediaUI } from '../../media/mediaUI';
+import { useUI } from '../../state/ui';
 import { Seg } from '../common';
 import Icon from '../Icon';
+import MediaThumb from '../media/MediaThumb';
 import LeverageDiagram from './LeverageDiagram';
 
 export interface PatternState {
@@ -214,6 +219,8 @@ export default function PatternPanel({
           })()}
       </div>
 
+      <FormClips pattern={pattern} variant={variant.value} load={hasLoad ? state.load : undefined} />
+
       <div className="side-section">
         <div className="row between">
           <h4>Muscle groups</h4>
@@ -250,5 +257,57 @@ export default function PatternPanel({
         </p>
       </div>
     </>
+  );
+}
+
+/** Your filmed sets of this movement, and a shortcut to record one with the current settings. */
+function FormClips({ pattern, variant, load }: { pattern: PatternDef; variant: string; load?: number }) {
+  const media = useMedia();
+  const mui = useMediaUI();
+  const ui = useUI();
+  const clips = useMemo(() => formSeries(media, pattern.id).reverse(), [media, pattern.id]);
+  const latest = clips[0];
+  const latestMarks = (latest?.marks ?? []).map((m) => ({ m, v: markValue(m, latest.width, latest.height) })).filter((x) => x.v);
+  return (
+    <div className="side-section">
+      <div className="row between">
+        <h4>Your form</h4>
+        <span className="tiny muted">{clips.length ? `${clips.length} clip${clips.length > 1 ? 's' : ''}` : 'Film a set to compare'}</span>
+      </div>
+      {clips.length > 0 && (
+        <div className="thumb-row">
+          {clips.slice(0, 6).map((c) => (
+            <MediaThumb key={c.id} item={c} caption={formatShort(c.date)} onClick={() => mui.openViewer(c.id, clips.map((x) => x.id))} />
+          ))}
+        </div>
+      )}
+      {latestMarks.length > 0 && (
+        <div className="chips">
+          {latestMarks.slice(0, 4).map(({ m, v }) => (
+            <span key={m.id} className="chip mini">
+              {markName(m)} {m.type === 'path' ? `${Math.round(v!.value)}%` : `${Math.round(v!.value)}°`}
+            </span>
+          ))}
+          <span className="tiny muted">latest clip</span>
+        </div>
+      )}
+      <div className="row wrap">
+        <button className="btn small primary" onClick={() => mui.openCamera({ mode: 'video', purpose: 'form', pattern: pattern.id, variant, load })}>
+          <Icon name="video" /> Record a set
+        </button>
+        {clips.length > 0 && (
+          <button
+            className="btn small"
+            onClick={() => {
+              mui.set({ focus: { tab: 'form', pattern: pattern.id } });
+              ui.setRoute('media');
+            }}
+          >
+            <Icon name="compare" /> Track over time
+          </button>
+        )}
+      </div>
+      {clips.length === 0 && <p className="tiny muted">Film from the side at hip height. Then slow it down, mark angles and watch this model move with you.</p>}
+    </div>
   );
 }

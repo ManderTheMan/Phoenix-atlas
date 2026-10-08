@@ -300,6 +300,15 @@ export async function seedDemoData(): Promise<number> {
   });
   // ensure every referenced structure exists in the catalog (sanity)
   for (const n of notes) for (const s of n.structureIds) if (!STRUCTURE_BY_ID.has(s)) console.warn('unknown structure in demo data', s);
+  // progress photos and squat clips (rendered here, so they need WebGL; skipped quietly without it)
+  if (typeof document !== 'undefined') {
+    try {
+      const { seedDemoMedia } = await import('../media/demo');
+      await seedDemoMedia(measurements, notes);
+    } catch (e) {
+      console.warn('Demo media skipped', e);
+    }
+  }
   return notes.length;
 }
 
@@ -309,5 +318,10 @@ export async function clearDemoData(): Promise<void> {
     await db.metrics.filter((m) => m.source === 'demo').delete();
     await db.activities.filter((a) => a.source === 'demo').delete();
     await db.measurements.filter((m) => m.source === 'demo').delete();
+  });
+  const demoMedia = (await db.media.filter((m) => m.source === 'demo').toArray()).map((m) => m.id);
+  await db.transaction('rw', db.media, db.mediaBlobs, async () => {
+    await db.media.bulkDelete(demoMedia);
+    await db.mediaBlobs.bulkDelete(demoMedia);
   });
 }

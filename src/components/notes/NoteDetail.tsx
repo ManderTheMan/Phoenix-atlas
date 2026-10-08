@@ -5,7 +5,10 @@ import type { Note } from '../../db/db';
 import { deleteNote, followUpDraft, relatedNotes, threadOf } from '../../db/notes';
 import { formatDateTime, formatShort } from '../../lib/dates';
 import { SENSATION_BY_ID, feelingColor, formatFeeling } from '../../lib/feeling';
+import { useMedia } from '../../media/media';
+import { useMediaUI } from '../../media/mediaUI';
 import { useUI } from '../../state/ui';
+import MediaThumb from '../media/MediaThumb';
 import LineChart from '../charts/LineChart';
 import { CategoryLabel, ConfirmButton, FeelBadge } from '../common';
 import Icon from '../Icon';
@@ -14,6 +17,9 @@ import NoteCard from './NoteCard';
 export default function NoteDetail({ note, notes }: { note: Note; notes: Note[] }) {
   const ui = useUI();
   const thread = useMemo(() => threadOf(note, notes), [note, notes]);
+  const media = useMedia();
+  const mui = useMediaUI();
+  const attached = media.filter((m) => m.noteId === note.id);
   const related = useMemo(() => relatedNotes(note, notes).filter((r) => !thread.some((t) => t.id === r.note.id)).slice(0, 12), [note, notes, thread]);
 
   const edit = () => {
@@ -63,6 +69,17 @@ export default function NoteDetail({ note, notes }: { note: Note; notes: Note[] 
       )}
 
       {note.body && <p style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{note.body}</p>}
+
+      {attached.length > 0 && (
+        <div className="col" style={{ gap: 6 }}>
+          <h4>Photos &amp; videos</h4>
+          <div className="thumb-row">
+            {attached.map((m) => (
+              <MediaThumb key={m.id} item={m} onClick={() => mui.openViewer(m.id, attached.map((x) => x.id))} />
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="col" style={{ gap: 6 }}>
         <h4>Where</h4>

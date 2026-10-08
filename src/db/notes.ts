@@ -2,7 +2,11 @@
 import { normalizeTag } from '../lib/feeling';
 import { db, uid, type Note } from './db';
 
-export type NoteDraft = Omit<Note, 'id' | 'createdAt' | 'updatedAt' | 'structureIds'> & { id?: string };
+export type NoteDraft = Omit<Note, 'id' | 'createdAt' | 'updatedAt' | 'structureIds'> & {
+  id?: string;
+  /** The id a new note will get, so photos can be attached before it is saved. */
+  pendingId?: string;
+};
 
 export function emptyDraft(partial: Partial<NoteDraft> = {}): NoteDraft {
   return {
@@ -19,8 +23,9 @@ export function emptyDraft(partial: Partial<NoteDraft> = {}): NoteDraft {
   };
 }
 
-function cleanNote(d: NoteDraft, existing?: Note): Note {
+function cleanNote(draft: NoteDraft, existing?: Note): Note {
   const now = Date.now();
+  const { pendingId, ...d } = draft;
   const tags = [...new Set(d.tags.map(normalizeTag).filter(Boolean))];
   const locations = d.locations.filter((l, i, arr) =>
     // keep distinct pins; collapse exact duplicates
@@ -28,7 +33,7 @@ function cleanNote(d: NoteDraft, existing?: Note): Note {
   );
   const note: Note = {
     ...d,
-    id: d.id ?? uid(),
+    id: d.id ?? pendingId ?? uid(),
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
     title: d.title.trim(),
@@ -37,7 +42,7 @@ function cleanNote(d: NoteDraft, existing?: Note): Note {
     tags,
     locations,
     structureIds: [...new Set(locations.map((l) => l.structureId))],
-    links: [...new Set(d.links)].filter((id) => id !== d.id),
+    links: [...new Set(d.links)].filter((id) => id !== (d.id ?? pendingId)),
   };
   if (note.workout && !note.workout.exercises.length && !note.workout.durationMin && !note.workout.rpe) delete note.workout;
   if (note.measurements && !note.measurements.length) delete note.measurements;
@@ -68,7 +73,7 @@ export async function saveNote(draft: NoteDraft): Promise<Note> {
 }
 
 export async function deleteNote(id: string): Promise<void> {
-  await db.transaction('rw', db.notes, db.activities, async () => {
+  await db.transaction('rw', [db.notes, db.activities, db.media], async () => {
     const n = await db.notes.get(id);
     if (!n) return;
     for (const l of n.links) {
@@ -80,6 +85,10 @@ export async function deleteNote(id: string): Promise<void> {
     await db.notes.delete(id);
     await db.activities.filter((a) => a.noteId === id).modify((a) => {
       delete a.noteId;
+    });
+    // photos and videos stay, unlinked
+    await db.media.where('noteId').equals(id).modify((m) => {
+      delete m.noteId;
     });
   });
 }

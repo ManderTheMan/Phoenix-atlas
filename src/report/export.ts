@@ -47,6 +47,8 @@ export function reportSummaryText(d: ReportData): string {
     const push = t.patternPerWeek.pushH + t.patternPerWeek.pushV, pull = t.patternPerWeek.pullH + t.patternPerWeek.pullV;
     lines.push(`• Push vs pull: ${push.toFixed(1)} vs ${pull.toFixed(1)} sets a week; squat/lunge vs hinge: ${(t.patternPerWeek.squat + t.patternPerWeek.lunge).toFixed(1)} vs ${t.patternPerWeek.hinge.toFixed(1)}`);
   }
+  if (o.sections.media && (d.media.progress.length || d.media.form.length))
+    lines.push(`• Photos: ${d.media.progress.length ? `${d.media.progress.length} progress pose${d.media.progress.length > 1 ? 's' : ''} then vs now` : ''}${d.media.progress.length && d.media.form.length ? ', ' : ''}${d.media.form.length ? `${d.media.form.length} form check${d.media.form.length > 1 ? 's' : ''}` : ''} (in the PDF)`);
   const keyMetrics = d.metrics.filter((m) => ['sleep_hours', 'resting_hr', 'hrv_ms', 'steps'].includes(m.metric));
   if (keyMetrics.length) lines.push(`• ${keyMetrics.map((m) => `${metricDef(m.metric).label} ${formatMetric(m.metric, m.avg)}`).join(' · ')}`);
   if (o.message.trim()) {

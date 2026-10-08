@@ -3,7 +3,8 @@ import { STRUCTURE_BY_ID } from '../anatomy/catalog';
 import { computeBodyColors } from '../analysis/colors';
 import type { StructureStatus } from '../analysis/status';
 import { dailyMeanFeeling, mean, rollingMean, structureStats, tagStats, type StructureStat, type TagStat } from '../analysis/stats';
-import type { Activity, MetricPoint, Note } from '../db/db';
+import type { Activity, MediaItem, MetricPoint, Note, PoseId } from '../db/db';
+import { formSeries, POSES, poseSeries } from '../media/media';
 import { DAY, dayKey, parseDayKey, startOfDay } from '../lib/dates';
 import type { CategoryId } from '../lib/feeling';
 import { summarizeTraining, type TrainingSummary } from '../movement/training';
@@ -16,7 +17,16 @@ export interface ReportSections {
   metrics: boolean;
   workouts: boolean;
   movement: boolean;
+  /** Progress photos and form-check stills (off by default: body photos are private). */
+  media: boolean;
   notes: boolean;
+}
+
+export interface ReportMedia {
+  /** Per pose: the latest photo in the period and the one to compare it with (the first in the period, or the last before it). */
+  progress: { pose: PoseId; then?: MediaItem; now: MediaItem }[];
+  /** Form clips and photos in the period, newest first. */
+  form: MediaItem[];
 }
 
 export interface ReportOptions {
@@ -64,6 +74,7 @@ export interface ReportData {
   layersWithNotes: Set<string>;
   /** Movement patterns and muscle-group volume over the period. */
   training: TrainingSummary;
+  media: ReportMedia;
 }
 
 export function defaultReportOptions(days = 30): ReportOptions {
@@ -77,7 +88,7 @@ export function defaultReportOptions(days = 30): ReportOptions {
     categories: [],
     tags: [],
     includePrivate: false,
-    sections: { summary: true, bodyMap: true, trend: true, areas: true, metrics: true, workouts: true, movement: true, notes: true },
+    sections: { summary: true, bodyMap: true, trend: true, areas: true, metrics: true, workouts: true, movement: true, media: false, notes: true },
     notesDetail: 'full',
     message: '',
   };
@@ -92,7 +103,23 @@ export function filterNotes(notes: Note[], o: ReportOptions, from = o.from, to =
     .sort((a, b) => a.date - b.date);
 }
 
-export function buildReportData(allNotes: Note[], allMetrics: MetricPoint[], allActivities: Activity[], opts: ReportOptions): ReportData {
+export function reportMedia(all: MediaItem[], o: ReportOptions): ReportMedia {
+  const ok = all.filter((m) => o.includePrivate || !m.private);
+  const inPeriod = (m: MediaItem) => m.date >= o.from && m.date <= o.to;
+  const progress: ReportMedia['progress'] = [];
+  for (const p of POSES) {
+    const s = poseSeries(ok, p.id);
+    const cur = s.filter(inPeriod);
+    if (!cur.length) continue;
+    const now = cur[cur.length - 1];
+    const then = cur.length > 1 ? cur[0] : s.filter((m) => m.date < o.from).pop();
+    progress.push({ pose: p.id, then, now });
+  }
+  const form = formSeries(ok).filter(inPeriod).reverse().slice(0, 9);
+  return { progress, form };
+}
+
+export function buildReportData(allNotes: Note[], allMetrics: MetricPoint[], allActivities: Activity[], opts: ReportOptions, allMedia: MediaItem[] = []): ReportData {
   const days = Math.max(1, Math.round((opts.to - opts.from) / DAY));
   const notes = filterNotes(allNotes, opts);
   const prevNotes = filterNotes(allNotes, opts, opts.from - days * DAY, opts.from - 1);
@@ -139,5 +166,6 @@ export function buildReportData(allNotes: Note[], allMetrics: MetricPoint[], all
     activities: allActivities.filter((a) => a.start >= opts.from && a.start <= opts.to).sort((a, b) => a.start - b.start),
     layersWithNotes,
     training: summarizeTraining(notes, allActivities, { weeks: Math.max(1, Math.round(days / 7)), at: opts.to }),
+    media: reportMedia(allMedia, opts),
   };
 }

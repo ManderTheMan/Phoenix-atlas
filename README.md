@@ -4,8 +4,8 @@ A personal body-tracking and analysis app. Tap anywhere on an anatomically
 detailed 3D human body (skin regions, muscles, bones, nerves, vessels or organs)
 to write a dated note about how it feels, and watch the body change colour as you track workouts, symptoms,
 movement, energy and general health over time. Analyse how movement patterns load your muscles and joints,
-fit the body to your own measurements, import your Google health data and export PDF reports to share with
-your coach.
+fit the body to your own measurements, take progress photos and form videos to watch your body and technique
+change, import your Google health data and export PDF reports to share with your coach.
 
 ![Atlas view](docs/atlas.jpg)
 
@@ -16,6 +16,12 @@ your coach.
 | Your training balance | Phone | Coach report (PDF) |
 | --- | --- | --- |
 | ![Training](docs/training.jpg) | ![Mobile](docs/mobile.jpg) | ![Report](docs/report.jpg) |
+
+| Progress photos | Form check: angles and leverage | Then and now |
+| --- | --- | --- |
+| ![Media](docs/media.jpg) | ![Form check](docs/form-check.jpg) | ![Compare](docs/compare.jpg) |
+
+The demo photos are renders of the 3D body fitted to the demo measurements, and the demo clips are drawn from the squat model.
 
 ## Features
 
@@ -54,6 +60,21 @@ your coach.
 - Measurements are dated, so you can chart them over time. Weight also goes into your health data.
 - A proportions card explains what your measurements mean: thigh-to-shin ratio and squat mechanics, arm span, BMI, waist-to-height and waist-to-hip ratios, and left/right differences.
 
+**Photos and videos**
+- **Progress photos.** Take a front, side and back photo in one go. A self-timer with beeps (3, 5 or 10 s) lets you stand back from the phone, guide lines keep your head and feet in the same place, and a **ghost** of your last photo of the pose shows faintly over the camera so you can line up exactly.
+- **Form videos.** Record a set (up to two minutes) tagged with its movement pattern, variation, load and reps, or import clips from your library. Photo and video dates are read from the files.
+- **Watch your form.** Play clips at ¼ or ½ speed, step frame by frame and loop. Draw on any frame:
+  - **Angle**: three taps, for a joint angle such as knee or hip.
+  - **Lean**: two taps, for how far a body part leans from vertical (torso, shin).
+  - **Path**: one tap per frame, for the bar path and how far it drifts sideways.
+  Name measurements the same way each time ("Knee", "Torso lean") and they are charted across clips, so you can see your depth or bar path change over weeks.
+- **Leverage synced to your video.** Mark the start and end-range positions (standing and the bottom of a squat), and the movement model's leverage diagram follows the clip as it plays, with the torque at each joint. Drag the diagram to scrub the video.
+- **Then and now.** Compare two photos side by side, as a wipe or laid over each other. Drag and zoom one photo to line it up, and the alignment is saved for next time. Two videos play in step, lined up on the position you marked, with their measurements side by side. Body comparisons also show how your measurements changed between the two dates.
+- **Time-lapse.** Play every photo of a pose in order, with the date and your weight, and save it as a video to share.
+- Photos and videos show up where they belong: the latest set in your Profile, your clips under each movement pattern, and attachments on notes (a photo of a bruise or swelling, a clip from a workout).
+- Coach reports can include then-and-now photos and form-check stills with their measurements. This section is off by default, and you can keep any photo or video out of reports.
+- Photos are re-encoded when saved, which strips location data. A privacy blur hides body photos in lists until you tap them.
+
 **Notes**
 - Each note is dated (and editable) and has a type (workout, symptom, movement, energy, general health, recovery), a feeling from −5 to +5, sensations (pain, tight, numb, pumped, strong…), an optional 0–10 intensity, one or more body locations, free text, tags, workout details (exercises, sets, reps, load, RPE) and custom measurements.
 - **Tags link notes together.** Tap a tag to see every note with it. The Insights page draws a network of which tags appear together.
@@ -85,12 +106,13 @@ your coach.
   - a health data summary
   - a training log
   - your movement balance and muscle-group volume
+  - progress photos and form checks, if you turn them on
   - your notes
 - **Share** the PDF directly from your phone, or export a **CSV** of your notes, or copy a short **text summary** to paste into a message.
 
 **Private by design**
-- Everything is stored on your device in IndexedDB. Nothing is uploaded anywhere.
-- Back up to a JSON file and restore it from Settings.
+- Everything is stored on your device in IndexedDB, including photos and videos. Nothing is uploaded anywhere.
+- Back up to a JSON file, or to a ZIP that also holds every photo and video, and restore either from Settings.
 - The app installs on your phone and works offline.
 
 ## Getting started
@@ -144,7 +166,7 @@ If you use the Google Health sync, add the deployed origin to your OAuth client.
 ## Development
 
 ```bash
-npm test           # unit tests (parsers, analysis, notes, reports, anatomy, body fitting, movement models)
+npm test           # unit tests (parsers, analysis, notes, reports, anatomy, body fitting, movement models, media)
 npm run typecheck
 npm run build      # type-checks and builds to dist/
 ```
@@ -155,14 +177,16 @@ npm run build      # type-checks and builds to dist/
 | `src/model/` | Loads a layer into one merged geometry, picks structures through a BVH, the shader material that colours and hides structures, and the body fitting (`bodyShape.ts`). |
 | `src/movement/` | Muscle groups, the movement pattern library, the biomechanics models, effort estimates and training analysis. |
 | `src/profile/` | Profile and measurement storage. |
+| `src/media/` | Photo and video storage, the geometry of angle, lean and path measurements, photo and video processing (EXIF and MP4 dates, thumbnails, stills), and the demo media. |
+| `src/components/media/` | The camera, the viewer with its measuring tools, the comparison and time-lapse screens. |
 | `scripts/build-landmarks.ts` | Measures the reference body (joint centres, segment lengths and girths) into `src/anatomy/landmarks.json`. |
 | `scripts/build-atlas.ts` | Builds `public/atlas/*.bin` and `catalog.json` from the anatomical dataset. |
 | `src/components/viewer/` | The react-three-fiber body viewer, layer panel, time bar and structure panel. |
-| `src/db/` | Dexie (IndexedDB) schema, notes with links and follow-ups, backup/restore, and demo data. |
+| `src/db/` | Dexie (IndexedDB) schema, notes with links and follow-ups, backup/restore (with a small streaming ZIP writer and reader for media), and demo data. |
 | `src/analysis/` | Per-structure status, trends, correlations, and the colour mapping. |
 | `src/health/` | Google Takeout, Fitbit, Health Connect and CSV parsers, plus the Google Health API client. |
 | `src/report/` | Report data, offscreen body snapshots, PDF (jsPDF) and CSV export. |
-| `src/pages/` | Atlas, Journal, Insights, Health data, Reports and Settings. |
+| `src/pages/` | Atlas, Movement, Media, Journal, Insights, Health data, Reports, Profile and Settings. |
 
 ### How the movement analysis works
 
@@ -173,6 +197,12 @@ Estimated effort is a joint's torque as a share of a typical maximum for a train
 ### How body fitting works
 
 The reference body is described by a simple skeleton, with joint centres measured from the model (for example a sphere fitted to each femoral head). Every vertex follows the up-to-three segments nearest to it. Arms only follow arm segments and legs only follow leg segments, so a hand resting against the thigh doesn't move with the leg. Notes keep their points on the reference body, and the points are mapped onto the fitted body for display.
+
+### How the photo and video tools work
+
+Measurements are stored as points in fractions of the frame, and angles are worked out in the frame's real proportions, so they read the same on any screen. Videos record as WebM where the browser supports it and as MP4 on Safari. Files are kept as Blobs in IndexedDB apart from their details, so lists stay fast, and the app asks the browser for persistent storage the first time you save one. A ZIP backup stores media files as they are: writing it only reads each video once (for its checksum), and restoring reads slices of the file, so large videos never have to fit in memory.
+
+Angles drawn on a photo depend on the camera angle: film side on, at hip height, from the same spot each time for numbers you can compare.
 
 ### Rendering
 

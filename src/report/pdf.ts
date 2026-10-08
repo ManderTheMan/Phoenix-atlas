@@ -10,9 +10,20 @@ import type { ReportData } from './data';
 import { GROUPS } from '../movement/groups';
 import { PATTERNS } from '../movement/patterns';
 
+export interface Still {
+  src: string;
+  /** Pixel size, for the aspect ratio. */
+  w: number;
+  h: number;
+}
+
 export interface Snapshots {
   surface?: [string, string];
   deep?: [string, string];
+  media?: {
+    progress: { pose: string; then?: Still & { date: number }; now: Still & { date: number }; changes: string }[];
+    form: (Still & { title: string; lines: string[] })[];
+  };
 }
 
 /** jsPDF's built-in fonts are Latin-1 only: swap common symbols for safe ones. */
@@ -422,6 +433,74 @@ export function generateReportPdf(d: ReportData, snaps: Snapshots): Blob {
       color(ins.tone === 'warn' ? [180, 80, 30] : INK);
       doc.text(lines, M, y + 3);
       y += lines.length * 4.2 + 1;
+    }
+    y += 2;
+  }
+
+  // ---------------------------------------------------------------- photos and form checks
+  const sm = snaps.media;
+  if (o.sections.media && sm && (sm.progress.length || sm.form.length)) {
+    heading('Progress photos & form checks', 90);
+    const caption = (s: string, x: number, yy: number, align: 'left' | 'center' = 'center') => {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      color(MUTED);
+      text(s, x, yy, { align });
+    };
+    for (const p of sm.progress) {
+      const imgs = [p.then, p.now].filter(Boolean) as (Still & { date: number })[];
+      const ih = 74;
+      const ws = imgs.map((im) => Math.min(80, (ih * im.w) / im.h));
+      const gap = 6;
+      const total = ws.reduce((s, w) => s + w, 0) + gap * (ws.length - 1);
+      space(ih + 18);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      color(INK);
+      text(p.pose, M, y + 3);
+      y += 6;
+      let x = M + (CW - total) / 2;
+      imgs.forEach((im, i) => {
+        const w = ws[i], h = (w * im.h) / im.w;
+        doc.addImage(im.src, 'JPEG', x, y + (ih - h) / 2, w, h, undefined, 'FAST');
+        caption(`${imgs.length > 1 ? (i === 0 ? 'Then' : 'Now') + ' - ' : ''}${formatDate(im.date)}`, x + w / 2, y + ih + 4);
+        x += w + gap;
+      });
+      y += ih + 7;
+      if (p.changes) {
+        doc.setFontSize(8);
+        const lines: string[] = doc.splitTextToSize(pdfText(p.changes), CW - 20);
+        lines.forEach((l, k) => caption(l, W / 2, y + 1 + k * 3.6));
+        y += lines.length * 3.6 + 1.5;
+      }
+      y += 2;
+    }
+    if (sm.form.length) {
+      space(40);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      color(INK);
+      text('Form checks', M, y + 3);
+      y += 6;
+      const cols = 3, gap = 5, cw = (CW - gap * (cols - 1)) / cols;
+      for (let r = 0; r < sm.form.length; r += cols) {
+        const row = sm.form.slice(r, r + cols);
+        const hs = row.map((im) => Math.min(78, (cw * im.h) / im.w));
+        const rh = Math.max(...hs);
+        const lines = Math.max(...row.map((im) => im.lines.length));
+        space(rh + 10 + lines * 3.6);
+        row.forEach((im, i) => {
+          const x0 = M + i * (cw + gap);
+          const h = hs[i], w = (h * im.w) / im.h;
+          doc.addImage(im.src, 'JPEG', x0 + (cw - w) / 2, y, w, h, undefined, 'FAST');
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(8.5);
+          color(INK);
+          text(im.title, x0, y + rh + 4);
+          im.lines.forEach((l, k) => caption(l, x0, y + rh + 7.6 + k * 3.6, 'left'));
+        });
+        y += rh + 10 + lines * 3.6;
+      }
     }
     y += 2;
   }

@@ -3,8 +3,11 @@ import type { LayerId } from '../anatomy/types';
 import LineChart from '../components/charts/LineChart';
 import { Check, ConfirmButton, Seg } from '../components/common';
 import Icon from '../components/Icon';
+import MediaThumb from '../components/media/MediaThumb';
 import BodyViewer from '../components/viewer/BodyViewer';
 import { DAY, formatDate, formatShort } from '../lib/dates';
+import { latestByPose, poseSeries, POSE_SET, POSE_BY_ID, useMedia } from '../media/media';
+import { useMediaUI } from '../media/mediaUI';
 import { bodyDims, computeBodyShape, type BodyDims } from '../model/bodyShape';
 import {
   deleteMeasurement,
@@ -185,6 +188,7 @@ export default function ProfilePage() {
                 <Check on={profile.applyToModel} onChange={(v) => setP({ applyToModel: v })} label="Fit the 3D body to my measurements" />
               </div>
             </div>
+            <ProgressPhotos />
             <Proportions dims={dims} values={parsed} />
           </div>
 
@@ -339,6 +343,58 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** The latest front, side and back photos, with a shortcut to take the next set. */
+function ProgressPhotos() {
+  const media = useMedia();
+  const mui = useMediaUI();
+  const ui = useUI();
+  const latest = latestByPose(media);
+  const count = POSE_SET.reduce((n, p) => n + poseSeries(media, p).length, 0);
+  const last = [...latest.values()].sort((a, b) => b.date - a.date)[0];
+  const days = last ? Math.floor((Date.now() - last.date) / DAY) : null;
+  return (
+    <div className="card col">
+      <div className="row between wrap">
+        <h3>Progress photos</h3>
+        {last && <span className="tiny muted">Last set {days === 0 ? 'today' : `${days} day${days === 1 ? '' : 's'} ago`}</span>}
+      </div>
+      {count === 0 ? (
+        <p className="small dim">Take a front, side and back photo every few weeks, ideally on the days you measure. They line up with each other so you can see your shape change.</p>
+      ) : (
+        <div className="grid three" style={{ gap: 8 }}>
+          {POSE_SET.map((p) => {
+            const m = latest.get(p);
+            return m ? (
+              <MediaThumb key={p} item={m} caption={`${POSE_BY_ID.get(p)!.label} · ${formatShort(m.date)}`} onClick={() => mui.openViewer(m.id, poseSeries(media, p).map((x) => x.id))} />
+            ) : (
+              <button key={p} className="mthumb" onClick={() => mui.openCamera({ mode: 'photo', purpose: 'progress', pose: p })}>
+                <Icon name="plus" />
+                <span className="mthumb-cap">{POSE_BY_ID.get(p)!.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      <div className="row wrap">
+        <button className="btn primary small" onClick={() => mui.openCamera({ mode: 'photo', purpose: 'progress', pose: 'front', sequence: true })}>
+          <Icon name="camera" /> {count ? 'Take a new set' : 'Take progress photos'}
+        </button>
+        {count > 0 && (
+          <button
+            className="btn small"
+            onClick={() => {
+              mui.set({ focus: { tab: 'body' } });
+              ui.setRoute('media');
+            }}
+          >
+            <Icon name="compare" /> Compare over time
+          </button>
+        )}
       </div>
     </div>
   );

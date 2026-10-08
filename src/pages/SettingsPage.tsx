@@ -2,7 +2,8 @@ import { useRef, useState } from 'react';
 import { STRUCTURES } from '../anatomy/catalog';
 import { ConfirmButton } from '../components/common';
 import Icon from '../components/Icon';
-import { clearAll, downloadBlob, makeBackup, parseBackup, restoreBackup } from '../db/backup';
+import { clearAll, downloadBlob, makeBackup, makeMediaBackup, readBackupFile, restoreBackup } from '../db/backup';
+import { formatBytes, useMedia } from '../media/media';
 import { clearDemoData, seedDemoData } from '../db/seed';
 import { useMetrics, useNotes } from '../hooks/useData';
 import { dayKey } from '../lib/dates';
@@ -12,9 +13,13 @@ export default function SettingsPage() {
   const ui = useUI();
   const notes = useNotes();
   const metrics = useMetrics();
+  const media = useMedia();
+  const mediaBytes = media.reduce((s, m) => s + m.size + (m.thumb?.size ?? 0), 0);
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [progress, setProgress] = useState('');
   const hasDemo = notes.some((n) => n.source === 'demo') || metrics.some((m) => m.source === 'demo');
+  const hasDemoMedia = media.some((m) => m.source === 'demo');
 
   const run = async (label: string, fn: () => Promise<string | void>) => {
     setBusy(label);
@@ -42,16 +47,33 @@ export default function SettingsPage() {
           <div className="card-head" style={{ marginBottom: 0 }}>
             <h3>Your data</h3>
             <span className="muted small">
-              {notes.length} notes · {metrics.length} health data points
+              {notes.length} notes · {metrics.length} health data points · {media.length} photos &amp; videos
             </span>
           </div>
           <p className="dim small">
-            Phoenix Atlas keeps your notes in this browser’s storage (IndexedDB). Nothing is uploaded anywhere. Clearing site data or
-            switching devices loses it — download a backup and restore it on another device.
+            Phoenix Atlas keeps your notes, photos and videos in this browser’s storage (IndexedDB). Nothing is uploaded anywhere. Clearing
+            site data or switching devices loses it — download a backup and restore it on another device. Backups with media are ZIP files;
+            restore either kind here.
           </p>
           <div className="row wrap">
+            {media.length > 0 && (
+              <button
+                className="btn primary"
+                disabled={!!busy}
+                onClick={() =>
+                  run('media-backup', async () => {
+                    const zip = await makeMediaBackup((done, total) => setProgress(`${Math.round((done / total) * 100)}%`));
+                    setProgress('');
+                    downloadBlob(zip, `phoenix-atlas-backup-${dayKey(Date.now())}.zip`);
+                    return 'Backup with photos and videos downloaded';
+                  })
+                }
+              >
+                <Icon name="download" /> {busy === 'media-backup' ? `Packing… ${progress}` : `Backup with photos & videos (${formatBytes(mediaBytes)})`}
+              </button>
+            )}
             <button
-              className="btn primary"
+              className={media.length ? 'btn' : 'btn primary'}
               disabled={!!busy}
               onClick={() =>
                 run('backup', async () => {
@@ -61,7 +83,7 @@ export default function SettingsPage() {
                 })
               }
             >
-              <Icon name="download" /> Download backup
+              <Icon name="download" /> {media.length ? 'Without media (small)' : 'Download backup'}
             </button>
             <button className="btn" disabled={!!busy} onClick={() => fileRef.current?.click()}>
               <Icon name="upload" /> Restore from backup
@@ -69,16 +91,16 @@ export default function SettingsPage() {
             <input
               ref={fileRef}
               type="file"
-              accept="application/json,.json"
+              accept="application/json,.json,application/zip,.zip"
               hidden
               onChange={(e) => {
                 const f = e.target.files?.[0];
                 e.target.value = '';
                 if (!f) return;
                 run('restore', async () => {
-                  const b = parseBackup(await f.text());
-                  const r = await restoreBackup(b, 'merge');
-                  return `Restored ${r.notes} notes and ${r.metrics} data points`;
+                  const { backup, files } = await readBackupFile(f);
+                  const r = await restoreBackup(backup, 'merge', files);
+                  return `Restored ${r.notes} notes, ${r.metrics} data points${r.media ? ` and ${r.media} photos & videos` : ''}`;
                 });
               }}
             />
@@ -88,9 +110,10 @@ export default function SettingsPage() {
         <div className="card col">
           <h3>Demo data</h3>
           <p className="dim small">
-            Load three months of example notes (a recovering knee, a lower-back flare-up, a shoulder pinch, workouts, energy and sleep) and
-            matching health metrics to explore the atlas, insights and reports. Demo items are tagged <code>#demo</code> and can be removed
-            in one tap.
+            Load three months of example notes (a recovering knee, a lower-back flare-up, a shoulder pinch, workouts, energy and sleep),
+            matching health metrics, measurements, progress photos and squat clips to explore the atlas, insights, media and reports. The demo
+            photos are renders of the 3D body, and the clips are drawn from the movement model. Demo items are tagged <code>#demo</code> and
+            can be removed in one tap.
           </p>
           <div className="row wrap">
             <button
@@ -105,6 +128,22 @@ export default function SettingsPage() {
             >
               <Icon name="sparkle" /> {busy === 'seed' ? 'Loading…' : 'Load demo data'}
             </button>
+            {hasDemo && !hasDemoMedia && (
+              <button
+                className="btn"
+                disabled={!!busy}
+                onClick={() =>
+                  run('demo-media', async () => {
+                    const { db } = await import('../db/db');
+                    const { seedDemoMedia } = await import('../media/demo');
+                    const n = await seedDemoMedia(await db.measurements.filter((m) => m.source === 'demo').toArray(), notes);
+                    return n ? `Added ${n} demo photos and clips` : 'This browser couldn’t render the demo media';
+                  })
+                }
+              >
+                <Icon name="camera" /> {busy === 'demo-media' ? 'Rendering…' : 'Add demo photos & clips'}
+              </button>
+            )}
             <button className="btn" disabled={!!busy || !hasDemo} onClick={() => run('unseed', async () => (await clearDemoData(), 'Demo data removed'))}>
               <Icon name="trash" /> Remove demo data
             </button>
@@ -151,7 +190,7 @@ export default function SettingsPage() {
 
         <div className="card col" style={{ borderColor: '#4a2a30' }}>
           <h3>Danger zone</h3>
-          <p className="dim small">Permanently delete every note, health data point and setting on this device.</p>
+          <p className="dim small">Permanently delete every note, health data point, photo, video and setting on this device.</p>
           <div>
             <ConfirmButton onConfirm={() => run('clear', async () => (await clearAll(), 'All data deleted'))}>
               <Icon name="trash" /> Delete all data

@@ -1,8 +1,10 @@
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Toast } from './components/common';
 import Icon from './components/Icon';
+import MediaModals from './components/media/MediaModals';
 import NoteModals from './components/notes/NoteModals';
 import { resnapLegacyPoints } from './db/resnap';
+import { useMediaUI } from './media/mediaUI';
 import { useProfile } from './profile/profile';
 import AtlasPage from './pages/AtlasPage';
 import JournalPage from './pages/JournalPage';
@@ -14,15 +16,18 @@ const HealthPage = lazy(() => import('./pages/HealthPage'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
 const MovementPage = lazy(() => import('./pages/MovementPage'));
 const ProfilePage = lazy(() => import('./pages/ProfilePage'));
+const MediaPage = lazy(() => import('./pages/MediaPage'));
 
-const NAV: { id: Route; label: string; icon: string }[] = [
+/** `phone: false` keeps an item out of the phone's bottom bar (it moves to the header). */
+const NAV: { id: Route; label: string; icon: string; phone?: false }[] = [
   { id: 'atlas', label: 'Atlas', icon: 'body' },
   { id: 'movement', label: 'Movement', icon: 'movement' },
+  { id: 'media', label: 'Media', icon: 'camera' },
   { id: 'journal', label: 'Journal', icon: 'book' },
   { id: 'insights', label: 'Insights', icon: 'chart' },
   { id: 'health', label: 'Health data', icon: 'heart' },
   { id: 'reports', label: 'Reports', icon: 'file' },
-  { id: 'settings', label: 'Settings', icon: 'gear' },
+  { id: 'settings', label: 'Settings', icon: 'gear', phone: false },
 ];
 
 const ROUTES = new Set<Route>([...NAV.map((n) => n.id), 'profile']);
@@ -65,6 +70,10 @@ export default function App() {
           ))}
         </nav>
         <div className="header-spacer" />
+        <CaptureButton />
+        <button className={`header-icon phone-only ${route === 'settings' ? 'active' : ''}`} onClick={() => setRoute('settings')} aria-label="Settings and data" title="Settings and data">
+          <Icon name="gear" />
+        </button>
         <ProfileButton active={route === 'profile'} onClick={() => setRoute('profile')} />
       </header>
       <main className="main">
@@ -83,10 +92,11 @@ export default function App() {
           {route === 'settings' && <SettingsPage />}
           {route === 'movement' && <MovementPage />}
           {route === 'profile' && <ProfilePage />}
+          {route === 'media' && <MediaPage />}
         </Suspense>
       </main>
       <nav className="bottom-nav" aria-label="Main">
-        {NAV.map((n) => (
+        {NAV.filter((n) => n.phone !== false).map((n) => (
           <button key={n.id} className={route === n.id ? 'active' : ''} onClick={() => setRoute(n.id)}>
             <Icon name={n.icon} />
             {n.label.split(' ')[0]}
@@ -94,7 +104,48 @@ export default function App() {
         ))}
       </nav>
       <NoteModals />
+      <MediaModals />
       <Toast />
+    </div>
+  );
+}
+
+/** Quick capture from anywhere: a photo or a clip, with what it is for chosen after. */
+function CaptureButton() {
+  const [open, setOpen] = useState(false);
+  const route = useUI((s) => s.route);
+  const openCamera = useMediaUI((s) => s.openCamera);
+  const pick = (mode: 'photo' | 'video', purpose: 'progress' | 'form' | 'other', extra: { sequence?: boolean; upload?: boolean } = {}) => {
+    setOpen(false);
+    openCamera({ mode, purpose, ...(purpose === 'progress' ? { pose: 'front' } : {}), ...extra });
+  };
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: Event) => !(e.target as HTMLElement).closest?.('.capture') && setOpen(false);
+    window.addEventListener('pointerdown', close);
+    return () => window.removeEventListener('pointerdown', close);
+  }, [open]);
+  return (
+    <div className="capture">
+      <button className={`header-icon ${open ? 'active' : ''}`} onClick={() => setOpen((o) => !o)} aria-label="Take a photo or video" aria-expanded={open} title="Take a photo or video">
+        <Icon name="camera" />
+      </button>
+      {open && (
+        <div className="capture-menu" role="menu">
+          <button role="menuitem" onClick={() => pick('photo', 'progress', { sequence: true })}>
+            <Icon name="user" /> Progress photos <span className="tiny muted">front, side, back</span>
+          </button>
+          <button role="menuitem" onClick={() => pick('video', 'form')}>
+            <Icon name="video" /> Form video <span className="tiny muted">film a set</span>
+          </button>
+          <button role="menuitem" onClick={() => pick('photo', 'other')}>
+            <Icon name="camera" /> Other photo <span className="tiny muted">a bruise, posture…</span>
+          </button>
+          <button role="menuitem" onClick={() => pick('photo', route === 'movement' ? 'form' : 'progress', { upload: true })}>
+            <Icon name="upload" /> Import from library
+          </button>
+        </div>
+      )}
     </div>
   );
 }
