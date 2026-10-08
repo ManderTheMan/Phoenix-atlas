@@ -92,11 +92,20 @@ export interface Setting {
   value: unknown;
 }
 
+/** A dated set of body measurements (cm, kg, %). Only the fields measured that day are present. */
+export interface MeasurementEntry {
+  id: string;
+  date: number;
+  values: Record<string, number>;
+  source?: string;
+}
+
 export class AtlasDB extends Dexie {
   notes!: Table<Note, string>;
   metrics!: Table<MetricPoint, string>;
   activities!: Table<Activity, string>;
   settings!: Table<Setting, string>;
+  measurements!: Table<MeasurementEntry, string>;
 
   constructor(name = 'phoenix-atlas') {
     super(name);
@@ -110,6 +119,8 @@ export class AtlasDB extends Dexie {
     this.version(2)
       .stores({})
       .upgrade((tx) => tx.table('notes').toCollection().modify((n: Note) => void migrateNoteIds(n)));
+    // v3: body measurements for the profile
+    this.version(3).stores({ measurements: 'id, date' });
   }
 }
 

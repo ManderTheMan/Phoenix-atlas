@@ -1,5 +1,5 @@
 // Full backup / restore as a single JSON file.
-import { db, type Activity, type MetricPoint, type Note, type Setting } from './db';
+import { db, type Activity, type MeasurementEntry, type MetricPoint, type Note, type Setting } from './db';
 import { migrateNoteIds } from './migrate';
 
 export interface Backup {
@@ -10,16 +10,18 @@ export interface Backup {
   metrics: MetricPoint[];
   activities: Activity[];
   settings: Setting[];
+  measurements?: MeasurementEntry[];
 }
 
 const SECRET_KEYS = new Set(['googleToken']);
 
 export async function makeBackup(): Promise<Backup> {
-  const [notes, metrics, activities, settings] = await Promise.all([
+  const [notes, metrics, activities, settings, measurements] = await Promise.all([
     db.notes.toArray(),
     db.metrics.toArray(),
     db.activities.toArray(),
     db.settings.toArray(),
+    db.measurements.toArray(),
   ]);
   return {
     app: 'phoenix-atlas',
@@ -29,6 +31,7 @@ export async function makeBackup(): Promise<Backup> {
     metrics,
     activities,
     settings: settings.filter((s) => !SECRET_KEYS.has(s.key)),
+    measurements,
   };
 }
 
@@ -43,14 +46,15 @@ export function parseBackup(text: string): Backup {
     metrics: Array.isArray(data.metrics) ? data.metrics : [],
     activities: Array.isArray(data.activities) ? data.activities : [],
     settings: Array.isArray(data.settings) ? data.settings : [],
+    measurements: Array.isArray(data.measurements) ? data.measurements : [],
   };
 }
 
 /** Merge a backup into the database (existing items with the same id are replaced). */
 export async function restoreBackup(b: Backup, mode: 'merge' | 'replace' = 'merge'): Promise<{ notes: number; metrics: number }> {
-  await db.transaction('rw', db.notes, db.metrics, db.activities, db.settings, async () => {
+  await db.transaction('rw', [db.notes, db.metrics, db.activities, db.settings, db.measurements], async () => {
     if (mode === 'replace') {
-      await Promise.all([db.notes.clear(), db.metrics.clear(), db.activities.clear()]);
+      await Promise.all([db.notes.clear(), db.metrics.clear(), db.activities.clear(), db.measurements.clear()]);
     }
     const notes = b.notes
       .filter((n) => n && typeof n.id === 'string' && typeof n.date === 'number')
@@ -69,13 +73,14 @@ export async function restoreBackup(b: Backup, mode: 'merge' | 'replace' = 'merg
     await db.metrics.bulkPut(b.metrics.filter((m) => m && m.id && m.date && m.metric && Number.isFinite(m.value)));
     await db.activities.bulkPut(b.activities.filter((a) => a && a.id));
     await db.settings.bulkPut(b.settings.filter((s) => s && s.key && !SECRET_KEYS.has(s.key)));
+    await db.measurements.bulkPut((b.measurements ?? []).filter((m) => m && typeof m.id === 'string' && typeof m.date === 'number' && m.values && typeof m.values === 'object'));
   });
   return { notes: b.notes.length, metrics: b.metrics.length };
 }
 
 export async function clearAll(): Promise<void> {
-  await db.transaction('rw', db.notes, db.metrics, db.activities, db.settings, async () => {
-    await Promise.all([db.notes.clear(), db.metrics.clear(), db.activities.clear(), db.settings.clear()]);
+  await db.transaction('rw', [db.notes, db.metrics, db.activities, db.settings, db.measurements], async () => {
+    await Promise.all([db.notes.clear(), db.metrics.clear(), db.activities.clear(), db.settings.clear(), db.measurements.clear()]);
   });
 }
 

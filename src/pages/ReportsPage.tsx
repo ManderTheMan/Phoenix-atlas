@@ -10,6 +10,7 @@ import { DAY, dayKey, formatDate, formatShort, parseDayKey, startOfDay } from '.
 import { CATEGORIES, CATEGORY_BY_ID, feelingColor, formatFeeling, feelingLabel } from '../lib/feeling';
 import { buildReportData, defaultReportOptions, type ReportOptions, type ReportSections } from '../report/data';
 import { notesToCsv, reportSummaryText } from '../report/export';
+import { useBody } from '../profile/profile';
 import { useUI } from '../state/ui';
 
 const SECTION_LABELS: [keyof ReportSections, string][] = [
@@ -19,6 +20,7 @@ const SECTION_LABELS: [keyof ReportSections, string][] = [
   ['areas', 'Body areas table'],
   ['metrics', 'Health data'],
   ['workouts', 'Training log'],
+  ['movement', 'Movement patterns & muscle volume'],
   ['notes', 'Notes'],
 ];
 
@@ -38,6 +40,7 @@ export default function ReportsPage() {
   const [opts, setOpts] = useState<ReportOptions>(() => defaultReportOptions(30));
   const [preset, setPreset] = useState<number | null>(30);
   const [busy, setBusy] = useState<string | null>(null);
+  const { shape } = useBody();
 
   // remember who the report is for / from
   useEffect(() => {
@@ -63,9 +66,9 @@ export default function ReportsPage() {
     const snaps: { surface?: [string, string]; deep?: [string, string] } = {};
     if (opts.sections.bodyMap) {
       try {
-        snaps.surface = await renderBodySnapshots({ colors: data.colors, notes: data.notes, kind: 'surface' });
+        snaps.surface = await renderBodySnapshots({ colors: data.colors, notes: data.notes, kind: 'surface', shape });
         if (['skeletal', 'nerves', 'vascular', 'organs', 'deep'].some((l) => data.layersWithNotes.has(l)))
-          snaps.deep = await renderBodySnapshots({ colors: data.colors, notes: data.notes, kind: 'deep' });
+          snaps.deep = await renderBodySnapshots({ colors: data.colors, notes: data.notes, kind: 'deep', shape });
       } catch (e) {
         console.warn('Body map rendering failed', e);
         ui.showToast('Body map could not be rendered on this device — exporting without it');
@@ -371,6 +374,18 @@ function ReportPreview({ data }: { data: ReturnType<typeof buildReportData> }) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+      {o.sections.movement && data.training.sessions > 0 && (
+        <div>
+          <h3>Movement patterns</h3>
+          <div className="col" style={{ gap: 4, marginTop: 6 }}>
+            {data.training.insights.map((i) => (
+              <div key={i.text} className="small" style={{ color: i.tone === 'warn' ? '#b4501e' : undefined }}>
+                • {i.text}
+              </div>
+            ))}
+          </div>
         </div>
       )}
       {o.sections.notes && (

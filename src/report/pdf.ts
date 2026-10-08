@@ -7,6 +7,8 @@ import { formatDate, formatDateTime, formatShort } from '../lib/dates';
 import { CATEGORY_BY_ID, SENSATION_BY_ID, feelingLabel, feelingRgb, formatFeeling } from '../lib/feeling';
 import { formatMetric, metricDef } from '../health/metrics';
 import type { ReportData } from './data';
+import { GROUPS } from '../movement/groups';
+import { PATTERNS } from '../movement/patterns';
 
 export interface Snapshots {
   surface?: [string, string];
@@ -366,6 +368,62 @@ export function generateReportPdf(d: ReportData, snaps: Snapshots): Blob {
       },
     });
     y = lastY() + 4;
+  }
+
+  // ---------------------------------------------------------------- movement patterns
+  const tr = d.training;
+  if (o.sections.movement && tr.sessions > 0) {
+    heading('Movement patterns', 40);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    color(MUTED);
+    text(`Average sets per week over ${tr.weeks} week${tr.weeks === 1 ? '' : 's'}. Muscle groups: a prime mover counts a full set, a synergist half, a stabiliser a quarter.`, M, y);
+    y += 4;
+    const fmt = (v: number | null) => (v === null ? '-' : v === Infinity ? 'one side only' : `${v.toFixed(1)} : 1`);
+    autoTable(doc, {
+      ...tableStyle,
+      startY: y,
+      head: [['Balance', 'Ratio', 'Balance', 'Ratio']],
+      body: [
+        ['Push : pull', fmt(tr.balance.pushPull), 'Knee : hip dominant', fmt(tr.balance.kneeHip)],
+        ['Horizontal push : pull', fmt(tr.balance.horizontal), 'Vertical push : pull', fmt(tr.balance.vertical)],
+      ],
+    });
+    y = lastY() + 3;
+    const patterns = PATTERNS.filter((p) => tr.patternPerWeek[p.id] > 0);
+    const groups = GROUPS.filter((g) => tr.groupPerWeek[g.id] >= 0.5).sort((a, b) => tr.groupPerWeek[b.id] - tr.groupPerWeek[a.id]);
+    const rows = Math.max(patterns.length, Math.min(groups.length, 12));
+    autoTable(doc, {
+      ...tableStyle,
+      startY: y,
+      head: [['Pattern', 'Per week', 'Muscle group', 'Sets / week', 'Feeling']],
+      body: Array.from({ length: rows }, (_, i) => {
+        const p = patterns[i], g = groups[i];
+        const f = g ? tr.groupFeeling[g.id] : undefined;
+        return [
+          p ? pdfText(p.name) : '',
+          p ? `${tr.patternPerWeek[p.id].toFixed(1)}${p.id === 'gait' ? ' runs' : ' sets'}` : '',
+          g ? pdfText(g.name) : '',
+          g ? tr.groupPerWeek[g.id].toFixed(1) : '',
+          f ? `   ${formatFeeling(f.score)}` : '',
+        ];
+      }),
+      columnStyles: { 1: { halign: 'right' }, 3: { halign: 'right' } },
+      didDrawCell: (c) => {
+        if (c.column.index === 4) cellDot(c);
+      },
+    });
+    y = lastY() + 3;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    for (const ins of tr.insights) {
+      const lines = doc.splitTextToSize(pdfText(`- ${ins.text}`), CW);
+      space(lines.length * 4.2 + 1);
+      color(ins.tone === 'warn' ? [180, 80, 30] : INK);
+      doc.text(lines, M, y + 3);
+      y += lines.length * 4.2 + 1;
+    }
+    y += 2;
   }
 
   // ---------------------------------------------------------------- notes

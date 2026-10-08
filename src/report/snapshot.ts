@@ -16,7 +16,8 @@ import { STRUCTURE_BY_ID } from '../anatomy/catalog';
 import { LAYER_BY_ID, type LayerId } from '../anatomy/types';
 import type { Note } from '../db/db';
 import { feelingColor } from '../lib/feeling';
-import { loadLayers } from '../model/atlasModel';
+import { applyShape, loadLayers } from '../model/atlasModel';
+import type { BodyShape } from '../model/bodyShape';
 import { createLayerMaterial } from '../model/layerMaterial';
 
 export type SnapshotKind = 'surface' | 'deep';
@@ -28,6 +29,8 @@ export interface SnapshotOptions {
   width?: number;
   height?: number;
   background?: string;
+  /** Fit the body to the profile's measurements. */
+  shape?: BodyShape | null;
 }
 
 interface LayerSpec {
@@ -87,6 +90,7 @@ export async function renderBodySnapshots(o: SnapshotOptions): Promise<[string, 
   const included = new Set<string>();
   specs.forEach((spec, k) => {
     const m = models[k];
+    applyShape(m, o.shape ?? null);
     const lm = createLayerMaterial(spec.layer, m.ids.length);
     lm.setStates(m.ids.length, (i) => {
       const id = m.ids[i];
@@ -111,8 +115,9 @@ export async function renderBodySnapshots(o: SnapshotOptions): Promise<[string, 
       if (!l.point || !included.has(l.structureId)) continue;
       const m = new MeshStandardMaterial({ color: feelingColor(n.feeling), roughness: 0.3, emissive: '#ffffff', emissiveIntensity: 0.12 });
       const s = new Mesh(pinGeo, m);
-      const nn = l.normal ?? [0, 0, 1];
-      s.position.set(l.point[0] + nn[0] * 0.004, l.point[1] + nn[1] * 0.004, l.point[2] + nn[2] * 0.004);
+      const pt = o.shape ? o.shape.deformPoint(l.point, l.structureId) : l.point;
+      const nn = (l.normal && o.shape ? o.shape.deformNormal(l.point, l.normal, l.structureId) : l.normal) ?? [0, 0, 1];
+      s.position.set(pt[0] + nn[0] * 0.004, pt[1] + nn[1] * 0.004, pt[2] + nn[2] * 0.004);
       s.renderOrder = 30;
       scene.add(s);
       disposables.push(m);

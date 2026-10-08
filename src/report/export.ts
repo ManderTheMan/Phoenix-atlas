@@ -42,6 +42,11 @@ export function reportSummaryText(d: ReportData): string {
     lines.push(`• Needs attention: ${d.attention.slice(0, 4).map((s) => `${STRUCTURE_BY_ID.get(s.structureId)?.name} (${formatFeeling(s.score)})`).join(', ')}`);
   if (d.improving.length) lines.push(`• Improving: ${d.improving.slice(0, 3).map((s) => STRUCTURE_BY_ID.get(s.structureId)?.name).join(', ')}`);
   if (d.worsening.length) lines.push(`• Getting worse: ${d.worsening.slice(0, 3).map((s) => STRUCTURE_BY_ID.get(s.structureId)?.name).join(', ')}`);
+  const t = d.training;
+  if (t.sessions && t.balance.pushPull !== null) {
+    const push = t.patternPerWeek.pushH + t.patternPerWeek.pushV, pull = t.patternPerWeek.pullH + t.patternPerWeek.pullV;
+    lines.push(`• Push vs pull: ${push.toFixed(1)} vs ${pull.toFixed(1)} sets a week; squat/lunge vs hinge: ${(t.patternPerWeek.squat + t.patternPerWeek.lunge).toFixed(1)} vs ${t.patternPerWeek.hinge.toFixed(1)}`);
+  }
   const keyMetrics = d.metrics.filter((m) => ['sleep_hours', 'resting_hr', 'hrv_ms', 'steps'].includes(m.metric));
   if (keyMetrics.length) lines.push(`• ${keyMetrics.map((m) => `${metricDef(m.metric).label} ${formatMetric(m.metric, m.avg)}`).join(' · ')}`);
   if (o.message.trim()) {

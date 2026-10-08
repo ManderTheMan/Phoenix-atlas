@@ -5,7 +5,7 @@ import type { LayerId } from '../anatomy/types';
 import { loadLayers, pointFacing, type LayerModel } from '../model/atlasModel';
 import { DAY, dayKey, startOfDay } from '../lib/dates';
 import type { CategoryId } from '../lib/feeling';
-import { db, uid, type Activity, type MetricPoint, type Note, type NoteLocation, type Vec3 } from './db';
+import { db, uid, type Activity, type MeasurementEntry, type MetricPoint, type Note, type NoteLocation, type Vec3 } from './db';
 
 type Facing = 'front' | 'back' | 'left' | 'right' | 'up';
 
@@ -285,10 +285,18 @@ export async function seedDemoData(): Promise<number> {
     }
   }
 
-  await db.transaction('rw', db.notes, db.metrics, db.activities, async () => {
+  // body measurements a few weeks apart (fits the 3D body; shows progress on the profile)
+  const measurements: MeasurementEntry[] = [
+    [88, { height: 178, weight: 82.4, shoulderWidth: 40, thigh: 44, shank: 38, upperArm: 32, forearm: 27.5, neck: 39.5, chest: 101, waist: 87, hips: 99, armL: 34, armR: 34.6, forearmL: 29, forearmR: 29.4, thighL: 57.5, thighR: 58.2, calfL: 38.2, calfR: 38.6 }],
+    [45, { weight: 81.9, chest: 101.8, waist: 85.8, hips: 98.6, armL: 34.6, armR: 35.1, thighL: 58.3, thighR: 58.8 }],
+    [4, { weight: 81.3, chest: 102.5, waist: 84.6, hips: 98.2, armL: 35.2, armR: 35.6, forearmL: 29.6, forearmR: 29.9, thighL: 59, thighR: 59.3, calfL: 38.6, calfR: 38.9 }],
+  ].map(([ago, values]) => ({ id: `demo-measure-${ago}`, date: day(ago as number, 8), values: values as Record<string, number>, source: 'demo' }));
+
+  await db.transaction('rw', [db.notes, db.metrics, db.activities, db.measurements], async () => {
     await db.notes.bulkPut(notes);
     await db.metrics.bulkPut(metrics);
     await db.activities.bulkPut(activities);
+    await db.measurements.bulkPut(measurements);
   });
   // ensure every referenced structure exists in the catalog (sanity)
   for (const n of notes) for (const s of n.structureIds) if (!STRUCTURE_BY_ID.has(s)) console.warn('unknown structure in demo data', s);
@@ -296,9 +304,10 @@ export async function seedDemoData(): Promise<number> {
 }
 
 export async function clearDemoData(): Promise<void> {
-  await db.transaction('rw', db.notes, db.metrics, db.activities, async () => {
+  await db.transaction('rw', [db.notes, db.metrics, db.activities, db.measurements], async () => {
     await db.notes.where('tags').equals('demo').delete();
     await db.metrics.filter((m) => m.source === 'demo').delete();
     await db.activities.filter((a) => a.source === 'demo').delete();
+    await db.measurements.filter((m) => m.source === 'demo').delete();
   });
 }

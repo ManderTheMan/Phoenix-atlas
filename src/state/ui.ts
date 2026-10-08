@@ -6,7 +6,7 @@ import type { Vec3 } from '../db/db';
 import type { NoteDraft } from '../db/notes';
 
 export type ColorMode = 'feeling' | 'trend' | 'activity' | 'anatomy';
-export type Route = 'atlas' | 'journal' | 'insights' | 'health' | 'reports' | 'settings';
+export type Route = 'atlas' | 'movement' | 'journal' | 'insights' | 'health' | 'reports' | 'settings' | 'profile';
 
 export interface LayerState {
   visible: boolean;
@@ -19,7 +19,7 @@ export interface Selection {
   normal?: Vec3;
 }
 
-export type CameraView = 'front' | 'back' | 'left' | 'right';
+export type CameraView = 'front' | 'back' | 'left' | 'right' | 'angle';
 
 interface UIState {
   route: Route;
@@ -39,6 +39,8 @@ interface UIState {
   openNoteId: string | null;
   /** Journal filters that other pages can set (e.g. "show notes with this tag"). */
   journalFilter: { tag?: string; structureId?: string; q?: string } | null;
+  /** Movement pattern to show when the Movement page opens (set from other pages). */
+  movementPattern: string | null;
   setRoute: (r: Route) => void;
   setLayer: (id: LayerId, patch: Partial<LayerState>) => void;
   soloLayer: (id: LayerId) => void;
@@ -49,9 +51,10 @@ interface UIState {
   showToast: (msg: string) => void;
   openNote: (id: string | null) => void;
   showJournal: (f: { tag?: string; structureId?: string; q?: string } | null) => void;
+  openMovement: (pattern: string) => void;
 }
 
-const ROUTES: Route[] = ['atlas', 'journal', 'insights', 'health', 'reports', 'settings'];
+const ROUTES: Route[] = ['atlas', 'movement', 'journal', 'insights', 'health', 'reports', 'settings', 'profile'];
 
 function initialRoute(): Route {
   if (typeof location === 'undefined') return 'atlas';
@@ -100,6 +103,7 @@ export const useUI = create<UIState>()(
       toast: null,
       openNoteId: null,
       journalFilter: null,
+      movementPattern: null,
       setRoute: (route) => set({ route }),
       setLayer: (id, patch) => set((s) => ({ layers: { ...s.layers, [id]: { ...s.layers[id], ...patch } } })),
       soloLayer: (id) =>
@@ -115,6 +119,7 @@ export const useUI = create<UIState>()(
       showToast: (msg) => set((s) => ({ toast: { msg, n: (s.toast?.n ?? 0) + 1 } })),
       openNote: (openNoteId) => set({ openNoteId }),
       showJournal: (journalFilter) => set({ journalFilter, route: 'journal', openNoteId: null }),
+      openMovement: (movementPattern) => set({ movementPattern, route: 'movement', openNoteId: null }),
     }),
     {
       name: 'phoenix-atlas-ui',

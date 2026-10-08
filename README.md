@@ -3,14 +3,19 @@
 A personal body-tracking and analysis app. Tap anywhere on an anatomically
 detailed 3D human body (skin regions, muscles, bones, nerves, vessels or organs)
 to write a dated note about how it feels, and watch the body change colour as you track workouts, symptoms,
-movement, energy and general health over time. Import your Google health data
-and export PDF reports to share with your coach.
+movement, energy and general health over time. Analyse how movement patterns load your muscles and joints,
+fit the body to your own measurements, import your Google health data and export PDF reports to share with
+your coach.
 
 ![Atlas view](docs/atlas.jpg)
 
-| Layers (skeleton, nerves, vessels, organs) | Phone | Coach report (PDF) |
+| Movement & leverage | Profile & body fitting | Layers (skeleton, nerves, vessels, organs) |
 | --- | --- | --- |
-| ![Layers](docs/layers.jpg) | ![Mobile](docs/mobile.jpg) | ![Report](docs/report.jpg) |
+| ![Movement](docs/movement.jpg) | ![Profile](docs/profile.jpg) | ![Layers](docs/layers.jpg) |
+
+| Your training balance | Phone | Coach report (PDF) |
+| --- | --- | --- |
+| ![Training](docs/training.jpg) | ![Mobile](docs/mobile.jpg) | ![Report](docs/report.jpg) |
 
 ## Features
 
@@ -33,6 +38,21 @@ and export PDF reports to share with your coach.
   - **Activity**: how much you've logged for each part.
   - **Anatomy**: natural anatomical colours.
 - **Time scrubber**: drag through your history or press play to watch how your body changed. You can set the window to 7 days, 30 days, 90 days, 1 year or all time.
+
+**Movement analysis**
+- Ten fundamental **movement patterns**: squat, hinge, lunge and split squat, horizontal and vertical push, horizontal and vertical pull, loaded carry, rotation and anti-rotation, and running gait. Each has variations (high-bar, low-bar and front squat; deadlift and RDL; bench press and push-up…) and options that change its leverage (depth, ankle mobility, grip width, elbow angle, torso angle).
+- **Tagged muscle groups.** 27 functional groups (quads, hamstrings, lats, rotator cuff…) are mapped onto the atlas's individual muscles. Each pattern tags the groups it uses as prime movers, synergists or stabilisers.
+- **Colour-coded activation.** The 3D muscles light up by estimated effort as you scrub through the movement (or press play).
+- **Interactive leverage.** A diagram poses a stick figure from your own proportions and draws, for every joint, its moment arm: the distance from the joint to the line of the load. You see the torque each joint needs (N·m), as a share of a typical maximum, and how it changes over the range. Drag across the diagram to move through the lift.
+- **Joint axes on the body.** Each joint's axis of rotation is drawn on the 3D body, coloured by how hard it works. Tap an axis to see its lever and torque.
+- **My training.** Every logged exercise is matched to its pattern. You get weekly sets per pattern and per muscle group (a prime mover counts a full set, a synergist half), push : pull and knee : hip balance, and how each group has felt in your notes, all coloured on the body.
+- The atlas links in too: tap a muscle to see its group and the patterns that train it.
+
+**Profile and measurements**
+- Record height, weight, body fat, segment lengths (upper arm, forearm, thigh, lower leg, foot, shoulder width, arm span) and girths (neck, chest, waist, hips, and left and right arm, forearm, thigh and calf), each with how to measure it.
+- **Fit the 3D body to you.** Height scales the whole body, lengths move the joints, and girths scale the soft tissue around each segment. A live preview shows the result, and you can apply it everywhere in the app. Note pins stay on the same anatomical spot when the body changes.
+- Measurements are dated, so you can chart them over time. Weight also goes into your health data.
+- A proportions card explains what your measurements mean: thigh-to-shin ratio and squat mechanics, arm span, BMI, waist-to-height and waist-to-hip ratios, and left/right differences.
 
 **Notes**
 - Each note is dated (and editable) and has a type (workout, symptom, movement, energy, general health, recovery), a feeling from −5 to +5, sensations (pain, tight, numb, pumped, strong…), an optional 0–10 intensity, one or more body locations, free text, tags, workout details (exercises, sets, reps, load, RPE) and custom measurements.
@@ -64,6 +84,7 @@ and export PDF reports to share with your coach.
   - an areas table
   - a health data summary
   - a training log
+  - your movement balance and muscle-group volume
   - your notes
 - **Share** the PDF directly from your phone, or export a **CSV** of your notes, or copy a short **text summary** to paste into a message.
 
@@ -123,7 +144,7 @@ If you use the Google Health sync, add the deployed origin to your OAuth client.
 ## Development
 
 ```bash
-npm test           # unit tests (parsers, analysis, notes, reports, anatomy data)
+npm test           # unit tests (parsers, analysis, notes, reports, anatomy, body fitting, movement models)
 npm run typecheck
 npm run build      # type-checks and builds to dist/
 ```
@@ -131,7 +152,10 @@ npm run build      # type-checks and builds to dist/
 | Path | What's there |
 | --- | --- |
 | `src/anatomy/` | The structure catalog (`catalog.json`, generated), reference notes, the layer file format, and the map from the first model's ids. |
-| `src/model/` | Loads a layer into one merged geometry, picks structures through a BVH, and the shader material that colours and hides structures. |
+| `src/model/` | Loads a layer into one merged geometry, picks structures through a BVH, the shader material that colours and hides structures, and the body fitting (`bodyShape.ts`). |
+| `src/movement/` | Muscle groups, the movement pattern library, the biomechanics models, effort estimates and training analysis. |
+| `src/profile/` | Profile and measurement storage. |
+| `scripts/build-landmarks.ts` | Measures the reference body (joint centres, segment lengths and girths) into `src/anatomy/landmarks.json`. |
 | `scripts/build-atlas.ts` | Builds `public/atlas/*.bin` and `catalog.json` from the anatomical dataset. |
 | `src/components/viewer/` | The react-three-fiber body viewer, layer panel, time bar and structure panel. |
 | `src/db/` | Dexie (IndexedDB) schema, notes with links and follow-ups, backup/restore, and demo data. |
@@ -139,6 +163,18 @@ npm run build      # type-checks and builds to dist/
 | `src/health/` | Google Takeout, Fitbit, Health Connect and CSV parsers, plus the Google Health API client. |
 | `src/report/` | Report data, offscreen body snapshots, PDF (jsPDF) and CSV export. |
 | `src/pages/` | Atlas, Journal, Insights, Health data, Reports and Settings. |
+
+### How the movement analysis works
+
+Each pattern is a quasi-static model: the movement is treated as slow enough that inertia can be ignored. The model poses your segments at a point in the range and keeps you balanced over mid-foot where that applies. It then sums the torque from the load and from each body segment, using the masses and centres of mass in Winter's anthropometric tables. Pressing and pulling use a 3D arm with two links, so grip width and elbow angle matter. Running uses a typical ground reaction force over the stance phase.
+
+Estimated effort is a joint's torque as a share of a typical maximum for a trained adult (for example 3.5 N·m per kg of body mass for the knee extensors). It is scaled by the group's role. These are estimates from the mechanics for learning and planning. They are not measured muscle activity (EMG) and not a clinical assessment.
+
+### How body fitting works
+
+The reference body is described by a simple skeleton, with joint centres measured from the model (for example a sphere fitted to each femoral head). Every vertex follows the up-to-three segments nearest to it. Arms only follow arm segments and legs only follow leg segments, so a hand resting against the thigh doesn't move with the leg. Notes keep their points on the reference body, and the points are mapped onto the fitted body for display.
+
+### Rendering
 
 Each layer is one merged mesh in which every vertex carries the index of its structure. A small data texture holds a colour and flags for each structure, so the viewer can recolour, highlight or hide any of them without extra draw calls. Taps are ray cast through a bounding volume hierarchy (three-mesh-bvh), and nerves and vessels get a ring of extra rays so a near miss still selects them.
 
@@ -162,7 +198,7 @@ To rebuild the model:
 
 ```bash
 npm run anatomy:fetch   # downloads the data release from npm into .cache/anatomy (about 70 MB)
-npm run model           # checks the checksums and writes public/atlas/*.bin and src/anatomy/catalog.json
+npm run model           # checks the checksums, writes public/atlas/*.bin and src/anatomy/catalog.json, then re-measures the landmarks
 ```
 
 Notes saved with the first, procedural body model are migrated automatically. Their structures are mapped to the closest atlas structure, and their pins are moved onto the new surface.

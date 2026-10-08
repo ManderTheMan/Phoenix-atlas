@@ -6,6 +6,7 @@ import { dailyMeanFeeling, mean, rollingMean, structureStats, tagStats, type Str
 import type { Activity, MetricPoint, Note } from '../db/db';
 import { DAY, dayKey, parseDayKey, startOfDay } from '../lib/dates';
 import type { CategoryId } from '../lib/feeling';
+import { summarizeTraining, type TrainingSummary } from '../movement/training';
 
 export interface ReportSections {
   summary: boolean;
@@ -14,6 +15,7 @@ export interface ReportSections {
   areas: boolean;
   metrics: boolean;
   workouts: boolean;
+  movement: boolean;
   notes: boolean;
 }
 
@@ -60,6 +62,8 @@ export interface ReportData {
   metrics: MetricSummary[];
   activities: Activity[];
   layersWithNotes: Set<string>;
+  /** Movement patterns and muscle-group volume over the period. */
+  training: TrainingSummary;
 }
 
 export function defaultReportOptions(days = 30): ReportOptions {
@@ -73,7 +77,7 @@ export function defaultReportOptions(days = 30): ReportOptions {
     categories: [],
     tags: [],
     includePrivate: false,
-    sections: { summary: true, bodyMap: true, trend: true, areas: true, metrics: true, workouts: true, notes: true },
+    sections: { summary: true, bodyMap: true, trend: true, areas: true, metrics: true, workouts: true, movement: true, notes: true },
     notesDetail: 'full',
     message: '',
   };
@@ -134,5 +138,6 @@ export function buildReportData(allNotes: Note[], allMetrics: MetricPoint[], all
     metrics,
     activities: allActivities.filter((a) => a.start >= opts.from && a.start <= opts.to).sort((a, b) => a.start - b.start),
     layersWithNotes,
+    training: summarizeTraining(notes, allActivities, { weeks: Math.max(1, Math.round(days / 7)), at: opts.to }),
   };
 }

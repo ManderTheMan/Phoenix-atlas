@@ -37,6 +37,10 @@ const PATHS: Record<string, string> = {
   menu: 'M4 7h16M4 12h16M4 17h16',
   arrowRight: 'M5 12h14M13 6l6 6-6 6',
   info: 'M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18zM12 11v5.5M12 7.5h.01',
+  user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4.5 20.5a7.5 7.5 0 0 1 15 0',
+  movement: 'M13.5 2.8a1.8 1.8 0 1 1 0 3.6 1.8 1.8 0 0 1 0-3.6zM12.6 8.2 11.2 13M11.2 13l4.3 2.2V20M11.2 13l-3.4 3.6L4.5 18.6M12.4 9.6l4.2 1.6M12.4 9.6 8.6 11.8',
+  ruler: 'M3.5 16.5 16.5 3.5l4 4-13 13zM7 13l2 2M10 10l2 2M13 7l2 2',
+  axis: 'M12 3v18M8.5 6.5a5 5 0 1 0 7 0M15.5 6.5l.5 2.5-2.5-.3',
 };
 
 export type IconName = keyof typeof PATHS;

@@ -5,6 +5,9 @@ import type { StructureStatus } from '../../analysis/status';
 import type { Note } from '../../db/db';
 import { emptyDraft } from '../../db/notes';
 import { relativeDay } from '../../lib/dates';
+import { ROLE_LABEL } from '../../movement/activation';
+import { GROUP_BY_ID, groupsOfStructure } from '../../movement/groups';
+import { PATTERNS } from '../../movement/patterns';
 import { feelingColor, formatFeeling } from '../../lib/feeling';
 import { useUI, type Selection } from '../../state/ui';
 import LineChart from '../charts/LineChart';
@@ -64,6 +67,27 @@ export default function StructurePanel({
           </button>
         </div>
         {def.info && <p className="dim small">{def.info}</p>}
+        {groupsOfStructure(def.id).map((gid) => {
+          const g = GROUP_BY_ID.get(gid)!;
+          const order = { prime: 0, synergist: 1, stabiliser: 2 };
+          const uses = PATTERNS.flatMap((p) => p.groups.filter((t) => t.group === gid).map((t) => ({ p, role: t.role }))).sort((a, b) => order[a.role] - order[b.role]);
+          return (
+            <div key={gid} className="col" style={{ gap: 6 }}>
+              <span className="small">
+                Part of <strong>{g.name}</strong> <span className="dim">· {g.action.toLowerCase()}</span>
+              </span>
+              {uses.length > 0 && (
+                <div className="chips">
+                  {uses.slice(0, 6).map(({ p, role }) => (
+                    <button key={p.id} className="chip" onClick={() => ui.openMovement(p.id)} title={`${ROLE_LABEL[role]} in the ${p.name.toLowerCase()} — open in Movement`}>
+                      {p.short} <span className="dim">· {ROLE_LABEL[role].toLowerCase()}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
         {def.approx && !def.info && (
           <p className="dim small">This shape is an approximation, not part of the anatomical dataset.</p>
         )}

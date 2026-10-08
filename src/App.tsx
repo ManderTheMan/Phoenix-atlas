@@ -3,6 +3,7 @@ import { Toast } from './components/common';
 import Icon from './components/Icon';
 import NoteModals from './components/notes/NoteModals';
 import { resnapLegacyPoints } from './db/resnap';
+import { useProfile } from './profile/profile';
 import AtlasPage from './pages/AtlasPage';
 import JournalPage from './pages/JournalPage';
 import SettingsPage from './pages/SettingsPage';
@@ -11,9 +12,12 @@ import { useUI, type Route } from './state/ui';
 const InsightsPage = lazy(() => import('./pages/InsightsPage'));
 const HealthPage = lazy(() => import('./pages/HealthPage'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
+const MovementPage = lazy(() => import('./pages/MovementPage'));
+const ProfilePage = lazy(() => import('./pages/ProfilePage'));
 
 const NAV: { id: Route; label: string; icon: string }[] = [
   { id: 'atlas', label: 'Atlas', icon: 'body' },
+  { id: 'movement', label: 'Movement', icon: 'movement' },
   { id: 'journal', label: 'Journal', icon: 'book' },
   { id: 'insights', label: 'Insights', icon: 'chart' },
   { id: 'health', label: 'Health data', icon: 'heart' },
@@ -21,7 +25,7 @@ const NAV: { id: Route; label: string; icon: string }[] = [
   { id: 'settings', label: 'Settings', icon: 'gear' },
 ];
 
-const ROUTES = new Set<Route>(NAV.map((n) => n.id));
+const ROUTES = new Set<Route>([...NAV.map((n) => n.id), 'profile']);
 
 export default function App() {
   const route = useUI((s) => s.route);
@@ -61,6 +65,7 @@ export default function App() {
           ))}
         </nav>
         <div className="header-spacer" />
+        <ProfileButton active={route === 'profile'} onClick={() => setRoute('profile')} />
       </header>
       <main className="main">
         <Suspense
@@ -76,6 +81,8 @@ export default function App() {
           {route === 'health' && <HealthPage />}
           {route === 'reports' && <ReportsPage />}
           {route === 'settings' && <SettingsPage />}
+          {route === 'movement' && <MovementPage />}
+          {route === 'profile' && <ProfilePage />}
         </Suspense>
       </main>
       <nav className="bottom-nav" aria-label="Main">
@@ -89,5 +96,21 @@ export default function App() {
       <NoteModals />
       <Toast />
     </div>
+  );
+}
+
+function ProfileButton({ active, onClick }: { active: boolean; onClick: () => void }) {
+  const profile = useProfile();
+  const initials = (profile.name ?? '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]!.toUpperCase())
+    .join('');
+  return (
+    <button className={`profile-btn ${active ? 'active' : ''}`} onClick={onClick} aria-label="Profile and measurements" title="Profile and measurements">
+      {initials ? <span className="avatar">{initials}</span> : <Icon name="user" />}
+      <span className="profile-btn-label">Profile</span>
+    </button>
   );
 }

@@ -1,13 +1,14 @@
-import { OrbitControls } from '@react-three/drei';
+import { Html, OrbitControls } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Color, InstancedMesh, Matrix4, Mesh, Quaternion, Raycaster, Vector2, Vector3, type PerspectiveCamera } from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { STRUCTURE_BY_ID } from '../../anatomy/catalog';
 import { LAYER_BY_ID, type LayerId } from '../../anatomy/types';
 import type { Vec3 } from '../../db/db';
 import { feelingColor } from '../../lib/feeling';
-import { LAYER_IDS, layerBVH, loadLayer, raycastLayer, type LayerHit, type LayerModel } from '../../model/atlasModel';
+import { applyShape, LAYER_IDS, layerBVH, loadLayer, raycastLayer, type LayerHit, type LayerModel } from '../../model/atlasModel';
+import type { BodyShape } from '../../model/bodyShape';
 import { createLayerMaterial } from '../../model/layerMaterial';
 import type { CameraView, ColorMode, LayerState, Selection } from '../../state/ui';
 
@@ -17,6 +18,19 @@ export interface Pin {
   point: Vec3;
   normal?: Vec3;
   feeling: number;
+}
+
+/** A joint's axis of rotation, drawn over the body (positions on the displayed body). */
+export interface AxisMarker {
+  id: string;
+  center: Vec3;
+  /** Unit direction of the axis. */
+  dir: Vec3;
+  length: number;
+  color: string;
+  label?: string;
+  /** Second line of the label, e.g. the moment. */
+  detail?: string;
 }
 
 export interface BodyViewerProps {
@@ -32,6 +46,13 @@ export interface BodyViewerProps {
   viewRequest?: { view: CameraView; n: number } | null;
   /** Structure ids to emphasise (e.g. locations of the note being edited). */
   highlight?: Set<string>;
+  /** Fit the body to someone's measurements (null = reference body). Pins and picks stay in reference space. */
+  shape?: BodyShape | null;
+  /** Replace a layer's neutral colour (e.g. dimmer muscles so highlights stand out). */
+  neutral?: Partial<Record<LayerId, string>>;
+  axes?: AxisMarker[];
+  selectedAxis?: string | null;
+  onAxisClick?: (id: string) => void;
 }
 
 const RENDER_ORDER: Record<LayerId, number> = { organs: 1, skeletal: 2, vascular: 3, nerves: 3, muscular: 4, skin: 5 };
@@ -84,6 +105,8 @@ function LayerMesh({
   highlight,
   selectedId,
   hoveredId,
+  shape,
+  neutral,
 }: {
   model: LayerModel;
   state: LayerState;
@@ -93,9 +116,12 @@ function LayerMesh({
   highlight?: Set<string>;
   selectedId: string | null;
   hoveredId: string | null;
+  shape: BodyShape | null;
+  neutral?: string;
 }) {
   const lm = useMemo(() => createLayerMaterial(model.layer, model.ids.length), [model]);
   useEffect(() => () => lm.dispose(), [lm]);
+  useLayoutEffect(() => void applyShape(model, shape), [model, shape]);
 
   useEffect(() => {
     const anatomy = colorMode === 'anatomy';
@@ -108,8 +134,8 @@ function LayerMesh({
       };
     });
     lm.uniforms.uAnatomy.value = anatomy ? 1 : 0;
-    lm.uniforms.uNeutral.value.set(LAYER_BY_ID[model.layer].color);
-  }, [lm, model, showDeep, colorMode, colors, highlight]);
+    lm.uniforms.uNeutral.value.set(neutral ?? LAYER_BY_ID[model.layer].color);
+  }, [lm, model, showDeep, colorMode, colors, highlight, neutral]);
 
   useEffect(() => lm.setOpacity(state.opacity), [lm, state.opacity]);
   lm.uniforms.uSelected.value = selectedId ? (model.indexOf.get(selectedId) ?? -1) : -1;
@@ -186,6 +212,48 @@ function SelectionMarker({ selection }: { selection: Selection | null }) {
   );
 }
 
+const _y = new Vector3(0, 1, 0);
+
+/** Joint axes: a rod through the joint centre and a ring showing the rotation. Drawn on top of the body. */
+function Axes({ axes, selected }: { axes: AxisMarker[]; selected?: string | null }) {
+  return (
+    <group>
+      {axes.map((a) => {
+        const on = !!selected && (a.id === selected || a.id.startsWith(`${selected}:`));
+        const dir = new Vector3(...a.dir).normalize();
+        const q = new Quaternion().setFromUnitVectors(_y, dir);
+        const ringQ = new Quaternion().setFromUnitVectors(new Vector3(0, 0, 1), dir);
+        return (
+          <group key={a.id} position={a.center}>
+            <mesh quaternion={q} renderOrder={50}>
+              <cylinderGeometry args={[on ? 0.0042 : 0.0028, on ? 0.0042 : 0.0028, a.length, 10]} />
+              <meshBasicMaterial color={a.color} depthTest={false} transparent opacity={on ? 1 : 0.85} />
+            </mesh>
+            {[1, -1].map((sgn) => (
+              <mesh key={sgn} position={dir.clone().multiplyScalar((sgn * a.length) / 2).toArray()} quaternion={sgn > 0 ? q : q.clone().multiply(new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), Math.PI))} renderOrder={50}>
+                <coneGeometry args={[on ? 0.009 : 0.007, 0.018, 12]} />
+                <meshBasicMaterial color={a.color} depthTest={false} transparent opacity={on ? 1 : 0.85} />
+              </mesh>
+            ))}
+            <mesh quaternion={ringQ} renderOrder={49}>
+              <torusGeometry args={[on ? 0.04 : 0.03, on ? 0.0026 : 0.0016, 8, 40, Math.PI * 1.6]} />
+              <meshBasicMaterial color={a.color} depthTest={false} transparent opacity={on ? 0.95 : 0.55} />
+            </mesh>
+            {on && a.label && (
+              <Html position={dir.clone().multiplyScalar(a.length / 2 + 0.03).toArray()} center zIndexRange={[5, 0]} style={{ pointerEvents: 'none' }}>
+                <div className="axis-label">
+                  <strong>{a.label}</strong>
+                  {a.detail && <span>{a.detail}</span>}
+                </div>
+              </Html>
+            )}
+          </group>
+        );
+      })}
+    </group>
+  );
+}
+
 /**
  * Tap and hover picking. Taps are told apart from drags (which orbit the camera)
  * by how far the pointer moved. Every visible, non-ghosted layer is ray cast
@@ -197,21 +265,25 @@ function Picker({
   layers,
   showDeep,
   pins,
+  axes,
   onPick,
   onPinClick,
+  onAxisClick,
   onHover,
 }: {
   models: Partial<Record<LayerId, LayerModel>>;
   layers: Record<LayerId, LayerState>;
   showDeep: boolean;
   pins: Pin[];
+  axes?: AxisMarker[];
   onPick?: (sel: Selection) => void;
   onPinClick?: (noteId: string) => void;
+  onAxisClick?: (id: string) => void;
   onHover: (h: { id: string; x: number; y: number } | null) => void;
 }) {
   const { gl, camera } = useThree();
-  const latest = useRef({ models, layers, showDeep, pins, onPick, onPinClick, onHover });
-  latest.current = { models, layers, showDeep, pins, onPick, onPinClick, onHover };
+  const latest = useRef({ models, layers, showDeep, pins, axes, onPick, onPinClick, onAxisClick, onHover });
+  latest.current = { models, layers, showDeep, pins, axes, onPick, onPinClick, onAxisClick, onHover };
 
   useEffect(() => {
     const el = gl.domElement;
@@ -243,7 +315,19 @@ function Picker({
     };
 
     const pick = (x: number, y: number, touch: boolean) => {
-      const { pins, onPick, onPinClick } = latest.current;
+      const { pins, axes, onPick, onPinClick, onAxisClick } = latest.current;
+      // joint axes are drawn on top of everything, so they win
+      if (axes?.length && onAxisClick) {
+        const ray = rayAt(x, y);
+        const tol = touch ? 0.022 : 0.012;
+        let bestAxis: { id: string; d: number } | null = null;
+        for (const a of axes) {
+          const c = new Vector3(...a.center), d = new Vector3(...a.dir).normalize().multiplyScalar(a.length / 2 + 0.01);
+          const dd = ray.distanceSqToSegment(c.clone().sub(d), c.clone().add(d));
+          if (dd < tol * tol && (!bestAxis || dd < bestAxis.d)) bestAxis = { id: a.id, d: dd };
+        }
+        if (bestAxis) return onAxisClick(bestAxis.id);
+      }
       let best = castAt(x, y);
       // nerves and vessels are only a few millimetres wide: accept a near miss
       // as long as the strand is not hidden behind the surface that was hit
@@ -272,8 +356,8 @@ function Picker({
       if (!best) return;
       onPick?.({
         structureId: best.structureId,
-        point: [best.point.x, best.point.y, best.point.z],
-        normal: [best.normal.x, best.normal.y, best.normal.z],
+        point: [best.refPoint.x, best.refPoint.y, best.refPoint.z],
+        normal: [best.refNormal.x, best.refNormal.y, best.refNormal.z],
       });
     };
 
@@ -331,6 +415,7 @@ const VIEW_DIRS: Record<CameraView, Vector3> = {
   back: new Vector3(0, 0.05, -1),
   left: new Vector3(1, 0.05, 0),
   right: new Vector3(-1, 0.05, 0),
+  angle: new Vector3(0.8, 0.12, 1),
 };
 
 function CameraRig({ viewRequest }: { viewRequest?: { view: CameraView; n: number } | null }) {
@@ -367,19 +452,30 @@ function CameraRig({ viewRequest }: { viewRequest?: { view: CameraView; n: numbe
 }
 
 export default function BodyViewer(props: BodyViewerProps) {
-  const { layers, showDeep, colorMode, colors, selection, pins, onPick, onPinClick, viewRequest, highlight } = props;
+  const { layers, showDeep, colorMode, colors, selection, pins, onPick, onPinClick, viewRequest, highlight, neutral, axes, selectedAxis, onAxisClick } = props;
+  const shape = props.shape ?? null;
   const [hover, setHover] = useState<{ id: string; x: number; y: number } | null>(null);
   const wanted = useMemo(() => LAYER_IDS.filter((id) => layers[id].visible), [layers]);
   const { models, error } = useLayerModels(wanted);
   const loading = wanted.filter((id) => !models[id]);
 
+  // pins and the selection are stored on the reference body; show them on the fitted one
   const visiblePins = useMemo(
     () =>
-      pins.filter((p) => {
-        const def = STRUCTURE_BY_ID.get(p.structureId);
-        return def && layers[def.layer].visible && structureShown(def.id, showDeep);
-      }),
-    [pins, layers, showDeep],
+      pins
+        .filter((p) => {
+          const def = STRUCTURE_BY_ID.get(p.structureId);
+          return def && layers[def.layer].visible && structureShown(def.id, showDeep);
+        })
+        .map((p) => (shape ? { ...p, point: shape.deformPoint(p.point, p.structureId), normal: p.normal && shape.deformNormal(p.point, p.normal, p.structureId) } : p)),
+    [pins, layers, showDeep, shape],
+  );
+  const shownSelection = useMemo(
+    () =>
+      selection?.point && shape
+        ? { ...selection, point: shape.deformPoint(selection.point, selection.structureId), normal: selection.normal && shape.deformNormal(selection.point, selection.normal, selection.structureId) }
+        : selection,
+    [selection, shape],
   );
 
   const hoverName = hover ? STRUCTURE_BY_ID.get(hover.id)?.name : null;
@@ -411,11 +507,14 @@ export default function BodyViewer(props: BodyViewerProps) {
                 highlight={highlight}
                 selectedId={selectedId}
                 hoveredId={hover?.id ?? null}
+                shape={shape}
+                neutral={neutral?.[id]}
               />
             ) : null;
           })}
           <Pins pins={visiblePins} />
-          <SelectionMarker selection={selection} />
+          <SelectionMarker selection={shownSelection} />
+          {axes && <Axes axes={axes} selected={selectedAxis} />}
         </group>
         <OrbitControls
           makeDefault
@@ -428,7 +527,17 @@ export default function BodyViewer(props: BodyViewerProps) {
           zoomSpeed={0.9}
         />
         <CameraRig viewRequest={viewRequest} />
-        <Picker models={models} layers={layers} showDeep={showDeep} pins={visiblePins} onPick={onPick} onPinClick={onPinClick} onHover={setHover} />
+        <Picker
+          models={models}
+          layers={layers}
+          showDeep={showDeep}
+          pins={visiblePins}
+          axes={axes}
+          onPick={onPick}
+          onPinClick={onPinClick}
+          onAxisClick={onAxisClick}
+          onHover={setHover}
+        />
       </Canvas>
       {hover && hoverName && (
         <div className="viewer-tip" style={{ left: hover.x + 14, top: hover.y + 10 }}>

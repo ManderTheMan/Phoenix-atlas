@@ -12,11 +12,13 @@ import TimeBar from '../components/viewer/TimeBar';
 import { emptyDraft, saveNote, deleteNote } from '../db/notes';
 import { useNotesLoaded } from '../hooks/useData';
 import { feelingColor, formatFeeling } from '../lib/feeling';
+import { useBody } from '../profile/profile';
 import { useUI, type Selection } from '../state/ui';
 
 export default function AtlasPage() {
   const ui = useUI();
   const { notes, loaded } = useNotesLoaded();
+  const { shape } = useBody();
   const [saving, setSaving] = useState(false);
   const [sheet, setSheet] = useState<'collapsed' | 'open' | 'full'>('collapsed');
   const at = ui.atDate ?? Date.now();
@@ -200,6 +202,7 @@ export default function AtlasPage() {
           onPinClick={(id) => ui.openNote(id)}
           viewRequest={ui.viewRequest}
           highlight={highlight}
+          shape={shape}
         />
         <LayerPanel />
         <div className="overlay view-buttons" role="group" aria-label="Camera view">
