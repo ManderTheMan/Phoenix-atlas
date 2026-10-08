@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { STRUCTURES } from '../anatomy/catalog';
 import { ConfirmButton } from '../components/common';
 import Icon from '../components/Icon';
 import { clearAll, downloadBlob, makeBackup, parseBackup, restoreBackup } from '../db/backup';
@@ -108,6 +109,36 @@ export default function SettingsPage() {
               <Icon name="trash" /> Remove demo data
             </button>
           </div>
+        </div>
+
+        <div className="card col">
+          <h3>Anatomy data &amp; licences</h3>
+          <p className="dim small">
+            The 3D body is built from{' '}
+            <a href="https://github.com/Z-Anatomy/Models-of-human-anatomy" target="_blank" rel="noreferrer">
+              Z-Anatomy
+            </a>
+            , whose models are based on <em>BodyParts3D, © The Database Center for Life Science</em> (segmented from real scan data). The
+            kidneys come from the Human Reference Atlas (Browne, Schlehlein) and the inner ear and ossicles from OpenEar (Sieber et al.). The
+            data was prepared by the Svitylo 3D Anatomy Atlas project; English and Latin names follow Terminologia Anatomica 2.
+          </p>
+          <p className="dim small">
+            Licensed under{' '}
+            <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noreferrer">
+              CC BY-SA 4.0
+            </a>{' '}
+            (kidneys and ear: CC BY 4.0). Phoenix Atlas’s adapted model (selected structures, simplified and merged into layers) is shared under
+            the same licence.{' '}
+            <a href={`${import.meta.env.BASE_URL}atlas/ATTRIBUTION.md`} target="_blank" rel="noreferrer">
+              Full attribution and changes
+            </a>
+            .
+          </p>
+          <p className="dim small">
+            {STRUCTURES.length.toLocaleString()} structures. The cerebral cortex in the source isn’t openly licensed, so the cerebral hemispheres
+            are an approximate shape fitted to the skull. The upstream data release hasn’t had a formal anatomical review yet. This is an
+            anatomically detailed model for education and personal tracking, not a medical device.
+          </p>
         </div>
 
         <div className="card col">

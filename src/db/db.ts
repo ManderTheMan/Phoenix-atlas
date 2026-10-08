@@ -2,6 +2,7 @@
 // unless you export it.
 import Dexie, { type Table } from 'dexie';
 import type { CategoryId } from '../lib/feeling';
+import { migrateNoteIds } from './migrate';
 
 export type Vec3 = [number, number, number];
 
@@ -10,6 +11,8 @@ export interface NoteLocation {
   /** Tap position on the model (model space, metres). Absent when picked from a list. */
   point?: Vec3;
   normal?: Vec3;
+  /** The point was tapped on the first body model and still needs moving onto the atlas surface. */
+  legacyPoint?: boolean;
 }
 
 export interface ExerciseEntry {
@@ -103,6 +106,10 @@ export class AtlasDB extends Dexie {
       activities: 'id, start, type',
       settings: 'key',
     });
+    // v2: the procedural body was replaced by the anatomical atlas
+    this.version(2)
+      .stores({})
+      .upgrade((tx) => tx.table('notes').toCollection().modify((n: Note) => void migrateNoteIds(n)));
   }
 }
 

@@ -33,7 +33,8 @@ export default defineConfig({
     }),
   ],
   worker: { format: 'es' },
-  build: { chunkSizeWarningLimit: 1200 },
+  // the main chunk carries three.js and the structure catalog (~40 kB gzipped)
+  build: { chunkSizeWarningLimit: 1800 },
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],

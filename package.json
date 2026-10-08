@@ -6,11 +6,10 @@
   "description": "Phoenix Atlas \u2014 tap a 3D body to log how it feels, track changes over time, import Google health data and share reports with your coach.",
   "scripts": {
     "dev": "vite",
-    "predev": "tsx scripts/build-model.ts",
     "build": "tsc -b && vite build",
-    "prebuild": "tsx scripts/build-model.ts",
     "preview": "vite preview",
-    "model": "tsx scripts/build-model.ts --force",
+    "anatomy:fetch": "node scripts/fetch-anatomy.mjs",
+    "model": "tsx scripts/build-atlas.ts",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run"
   },
@@ -27,9 +26,12 @@
     "react-dom": "^19.3.0",
     "sql.js": "^1.14.2",
     "three": "^0.186.1",
+    "three-mesh-bvh": "^0.9.15",
     "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@gltf-transform/core": "^4.5.1",
+    "@gltf-transform/extensions": "^4.5.1",
     "@types/papaparse": "^5.5.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

@@ -1,5 +1,6 @@
 // Full backup / restore as a single JSON file.
 import { db, type Activity, type MetricPoint, type Note, type Setting } from './db';
+import { migrateNoteIds } from './migrate';
 
 export interface Backup {
   app: 'phoenix-atlas';
@@ -62,6 +63,8 @@ export async function restoreBackup(b: Backup, mode: 'merge' | 'replace' = 'merg
         sensations: Array.isArray(n.sensations) ? n.sensations : [],
         feeling: Number.isFinite(n.feeling) ? n.feeling : 0,
       }));
+    // backups made before the anatomical atlas use the old structure ids
+    for (const n of notes) migrateNoteIds(n);
     await db.notes.bulkPut(notes);
     await db.metrics.bulkPut(b.metrics.filter((m) => m && m.id && m.date && m.metric && Number.isFinite(m.value)));
     await db.activities.bulkPut(b.activities.filter((a) => a && a.id));

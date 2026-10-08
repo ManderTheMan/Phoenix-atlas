@@ -501,6 +501,31 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 4px 0; width: 100
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
+.spinner.small {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border-width: 2px;
+  margin: 0 6px 0 0;
+  vertical-align: -2px;
+}
+
+.viewer-status {
+  position: absolute;
+  left: 50%;
+  top: 14px;
+  transform: translateX(-50%);
+  z-index: 3;
+  pointer-events: none;
+  background: rgba(14, 17, 23, 0.88);
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12.5px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
 .overlay {
   position: absolute;
   z-index: 4;
@@ -901,3 +926,11 @@ ol.steps code, p code, li code { font-family: var(--mono); font-size: 12px; back
 
 .report-grid { display: grid; gap: 16px; grid-template-columns: minmax(0, 360px) minmax(0, 1fr); align-items: start; }
 @media (max-width: 900px) { .report-grid { grid-template-columns: minmax(0, 1fr); } }
+
+.side-title .latin {
+  display: block;
+  margin-top: 2px;
+  font-size: 12.5px;
+  font-style: italic;
+  color: var(--text-2);
+}

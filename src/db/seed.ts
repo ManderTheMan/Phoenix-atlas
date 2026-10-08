@@ -1,7 +1,8 @@
 // Demo data: ~3 months of realistic notes and health metrics so every screen
 // has something to show. Clearly marked with the "demo" source/tag.
 import { STRUCTURE_BY_ID } from '../anatomy/catalog';
-import { loadAtlasModel, type AtlasModel } from '../model/atlasModel';
+import type { LayerId } from '../anatomy/types';
+import { loadLayers, pointFacing, type LayerModel } from '../model/atlasModel';
 import { DAY, dayKey, startOfDay } from '../lib/dates';
 import type { CategoryId } from '../lib/feeling';
 import { db, uid, type Activity, type MetricPoint, type Note, type NoteLocation, type Vec3 } from './db';
@@ -17,29 +18,15 @@ const DIRS: Record<Facing, Vec3> = {
 };
 
 /** Pick a surface point on a structure that faces the given direction. */
-function pointOn(model: AtlasModel, id: string, facing: Facing, bias = 0): NoteLocation {
-  const mesh = model.meshes.find((m) => m.id === id);
-  if (!mesh) return { structureId: id };
-  const p = mesh.positions;
-  let cx = 0, cy = 0, cz = 0;
-  const n = p.length / 3;
-  for (let i = 0; i < p.length; i += 3) { cx += p[i]; cy += p[i + 1]; cz += p[i + 2]; }
-  cx /= n; cy /= n; cz /= n;
+function pointOn(models: Map<LayerId, LayerModel>, id: string, facing: Facing, bias = 0): NoteLocation {
+  const layer = STRUCTURE_BY_ID.get(id)?.layer;
+  const m = layer && models.get(layer);
+  const index = m?.indexOf.get(id);
+  if (!m || index === undefined) return { structureId: id };
   let d = DIRS[facing];
   // structures on the right side mirror left/right facings
-  if (id.endsWith('-r') && (facing === 'left' || facing === 'right')) d = [-d[0], d[1], d[2]];
-  let best = 0, bestScore = -Infinity;
-  for (let i = 0; i < n; i++) {
-    const vx = p[i * 3] - cx, vy = p[i * 3 + 1] - cy, vz = p[i * 3 + 2] - cz;
-    const score = vx * d[0] + vy * d[1] + vz * d[2] - Math.abs(vy) * 0.6 + vy * bias;
-    if (score > bestScore) { bestScore = score; best = i; }
-  }
-  const nn = mesh.normals;
-  return {
-    structureId: id,
-    point: [p[best * 3], p[best * 3 + 1], p[best * 3 + 2]],
-    normal: [nn[best * 3], nn[best * 3 + 1], nn[best * 3 + 2]],
-  };
+  if (id.endsWith('_r') && (facing === 'left' || facing === 'right')) d = [-d[0], d[1], d[2]];
+  return { structureId: id, ...pointFacing(m, index, d, bias) };
 }
 
 function rng(seed: number) {
@@ -51,12 +38,13 @@ function rng(seed: number) {
 }
 
 export async function seedDemoData(): Promise<number> {
-  const model = await loadAtlasModel();
+  const used: LayerId[] = ['skin', 'muscular', 'skeletal', 'nerves', 'organs'];
+  const models = new Map((await loadLayers(used)).map((m) => [m.layer, m]));
   const rand = rng(42);
   const today = startOfDay(Date.now());
   const day = (ago: number, hour = 9, min = 0) => today - ago * DAY + hour * 3600_000 + min * 60_000;
   const notes: Note[] = [];
-  const at = (id: string, f: Facing, bias = 0) => pointOn(model, id, f, bias);
+  const at = (id: string, f: Facing, bias = 0) => pointOn(models, id, f, bias);
 
   const add = (n: {
     ago: number;
@@ -106,7 +94,7 @@ export async function seedDemoData(): Promise<number> {
   };
 
   // --- Thread: left knee pain from running, improving -----------------------
-  const knee = [at('vastus-medialis-l', 'front', 0.3), at('patella-l', 'front')];
+  const knee = [at('muscular.vastus_medialis_muscle_l', 'front', 0.3), at('skeletal.patella_l', 'front')];
   const kneeSeries: [number, number, string][] = [
     [80, -4, 'Sharp pain on the inside of the left knee on the downhill section of my run. Stopped at 6 km.'],
     [76, -3, 'Still sore on stairs. Iced twice. Skipping runs this week.'],
@@ -136,7 +124,7 @@ export async function seedDemoData(): Promise<number> {
   );
 
   // --- Thread: lower back tightness (flare-up, recovery, small relapse) ------
-  const back = [at('erector-spinae-l', 'back', -0.4), at('erector-spinae-r', 'back', -0.4), at('l4', 'back')];
+  const back = [at('muscular.longissimus_thoracis_muscle_l', 'back', -0.4), at('muscular.longissimus_thoracis_muscle_r', 'back', -0.4), at('skeletal.vertebra_l4', 'back')];
   const backSeries: [number, number, string, string[]][] = [
     [62, -3, 'Lower back locked up after heavy deadlifts + long drive. Hard to bend.', ['tight', 'pain', 'stiff']],
     [59, -2, 'Better with walking. Sitting still makes it worse.', ['tight', 'stiff']],
@@ -164,7 +152,7 @@ export async function seedDemoData(): Promise<number> {
   );
 
   // --- Thread: right shoulder pinch on overhead press ------------------------
-  const shoulder = [at('deltoid-anterior-r', 'front', 0.5), at('supraspinatus-r', 'up')];
+  const shoulder = [at('muscular.clavicular_part_of_deltoid_muscle_r', 'front', 0.5), at('muscular.supraspinatus_muscle_r', 'up')];
   const shSeries: [number, number, string][] = [
     [47, -2, 'Pinch at the front of the right shoulder at the top of the overhead press.'],
     [43, -2, 'Swapped to landmine press. Doing band pull-aparts + face pulls.'],
@@ -188,10 +176,10 @@ export async function seedDemoData(): Promise<number> {
   );
 
   // --- Workouts ---------------------------------------------------------------
-  const legs = () => [at('rectus-femoris-l', 'front'), at('rectus-femoris-r', 'front'), at('gluteus-maximus-l', 'back'), at('gluteus-maximus-r', 'back')];
-  const push = () => [at('pectoralis-major-l', 'front'), at('pectoralis-major-r', 'front'), at('triceps-l', 'back'), at('triceps-r', 'back')];
-  const pull = () => [at('latissimus-dorsi-l', 'back'), at('latissimus-dorsi-r', 'back'), at('biceps-l', 'front'), at('biceps-r', 'front')];
-  const run = () => [at('gastrocnemius-l', 'back'), at('gastrocnemius-r', 'back')];
+  const legs = () => [at('muscular.rectus_femoris_muscle_l', 'front'), at('muscular.rectus_femoris_muscle_r', 'front'), at('muscular.gluteus_maximus_muscle_l', 'back'), at('muscular.gluteus_maximus_muscle_r', 'back')];
+  const push = () => [at('muscular.sternocostal_head_of_pectoralis_major_muscle_l', 'front'), at('muscular.sternocostal_head_of_pectoralis_major_muscle_r', 'front'), at('muscular.long_head_of_triceps_brachii_l', 'back'), at('muscular.long_head_of_triceps_brachii_r', 'back')];
+  const pull = () => [at('muscular.latissimus_dorsi_muscle_l', 'back'), at('muscular.latissimus_dorsi_muscle_r', 'back'), at('muscular.long_head_of_biceps_brachii_l', 'front'), at('muscular.long_head_of_biceps_brachii_r', 'front')];
+  const run = () => [at('muscular.medial_head_of_gastrocnemius_l', 'back'), at('muscular.medial_head_of_gastrocnemius_r', 'back')];
   for (let ago = 88; ago >= 0; ago--) {
     const dow = new Date(today - ago * DAY).getDay();
     const progress = (88 - ago) / 88;
@@ -209,7 +197,7 @@ export async function seedDemoData(): Promise<number> {
         },
       });
       if (rand() > 0.35)
-        add({ ago: ago - 1, hour: 8, title: 'DOMS after leg day', category: 'recovery', feeling: -1, sensations: ['sore'], tags: ['legs', 'doms'], locations: [at('rectus-femoris-l', 'front'), at('vastus-lateralis-r', 'right')] });
+        add({ ago: ago - 1, hour: 8, title: 'DOMS after leg day', category: 'recovery', feeling: -1, sensations: ['sore'], tags: ['legs', 'doms'], locations: [at('muscular.rectus_femoris_muscle_l', 'front'), at('muscular.vastus_lateralis_muscle_r', 'right')] });
     } else if (dow === 3) {
       add({
         ago, hour: 18, title: 'Push day', category: 'workout', feeling: ago > 30 && ago < 48 ? 0 : 2,
@@ -263,14 +251,14 @@ export async function seedDemoData(): Promise<number> {
       measurements: [{ label: 'Energy', value: Math.round(5 + energy), unit: '/10' }, { label: 'Sleep', value: Math.round(sleep * 10) / 10, unit: 'h' }],
     });
   }
-  const headache = [at('upper-trapezius-l', 'back', 0.3), at('occipital-nerve-l', 'back'), at('brain', 'front')];
+  const headache = [at('muscular.descending_part_of_trapezius_muscle_l', 'back', 0.3), at('regions.occipital_region_l', 'back'), at('approx.cerebral_hemisphere_l', 'front')];
   for (const [ago, f] of [[70, -3], [52, -2], [27, -2], [11, -1]] as const)
     add({ ago, hour: 16, title: 'Tension headache', category: 'symptom', feeling: f, intensity: -f * 2, sensations: ['ache', 'tight'], tags: ['headache', 'desk', 'neck'], locations: headache, body: 'Started behind the eyes after a long screen day; neck and upper traps tight.' });
-  add({ ago: 38, title: 'Bloated after dinner', category: 'health', feeling: -2, sensations: ['swollen'], tags: ['digestion'], locations: [at('stomach', 'front'), at('small-intestine', 'front')] });
-  add({ ago: 18, title: 'Tingling down left leg', category: 'symptom', feeling: -2, sensations: ['tingling'], tags: ['lower-back', 'nerve'], locations: [at('sciatic-nerve-l', 'back')], body: 'Brief tingling into the back of the thigh after sitting 3 hours. Gone after a walk.' });
-  add({ ago: 16, title: 'Sports massage', category: 'recovery', feeling: 3, sensations: ['relaxed', 'mobile'], tags: ['massage', 'recovery'], locations: [at('biceps-femoris-l', 'back'), at('biceps-femoris-r', 'back'), at('erector-spinae-l', 'back')] });
-  add({ ago: 6, title: 'Hip flexors tight', category: 'movement', feeling: -1, sensations: ['tight'], tags: ['hips', 'mobility', 'desk'], locations: [at('iliopsoas-l', 'front'), at('iliopsoas-r', 'front')], body: 'Couch stretch 2 min each side helped.' });
-  add({ ago: 1, title: 'Resting heart rate low', category: 'health', feeling: 2, tags: ['heart', 'recovery'], locations: [at('heart', 'front')], measurements: [{ label: 'Resting HR', value: 52, unit: 'bpm' }] });
+  add({ ago: 38, title: 'Bloated after dinner', category: 'health', feeling: -2, sensations: ['swollen'], tags: ['digestion'], locations: [at('visceral.stomach', 'front'), at('visceral.jejunum', 'front')] });
+  add({ ago: 18, title: 'Tingling down left leg', category: 'symptom', feeling: -2, sensations: ['tingling'], tags: ['lower-back', 'nerve'], locations: [at('nervous.sciatic_nerve_l', 'back')], body: 'Brief tingling into the back of the thigh after sitting 3 hours. Gone after a walk.' });
+  add({ ago: 16, title: 'Sports massage', category: 'recovery', feeling: 3, sensations: ['relaxed', 'mobile'], tags: ['massage', 'recovery'], locations: [at('muscular.long_head_of_biceps_femoris_l', 'back'), at('muscular.long_head_of_biceps_femoris_r', 'back'), at('muscular.longissimus_thoracis_muscle_l', 'back')] });
+  add({ ago: 6, title: 'Hip flexors tight', category: 'movement', feeling: -1, sensations: ['tight'], tags: ['hips', 'mobility', 'desk'], locations: [at('muscular.psoas_major_l', 'front'), at('muscular.psoas_major_r', 'front')], body: 'Couch stretch 2 min each side helped.' });
+  add({ ago: 1, title: 'Resting heart rate low', category: 'health', feeling: 2, tags: ['heart', 'recovery'], locations: [at('cardiovascular.left_ventricle', 'front')], measurements: [{ label: 'Resting HR', value: 52, unit: 'bpm' }] });
 
   // --- Health metrics (as if imported from Google Health) ----------------------
   const metrics: MetricPoint[] = [];

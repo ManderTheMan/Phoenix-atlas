@@ -54,14 +54,19 @@ export default function StructurePanel({
               <span className="feel-dot" style={{ background: layer.anatomyColor, width: 8, height: 8, marginRight: 6 }} />
               {layer.name} · {def.group}
               {def.deep ? ' · deep' : ''}
+              {def.approx ? ' · approximate' : ''}
             </span>
             <h2>{def.name}</h2>
+            {def.latin && <span className="latin">{def.latin}</span>}
           </div>
           <button className="btn ghost icon" onClick={() => ui.set({ selection: null })} aria-label="Clear selection">
             <Icon name="x" />
           </button>
         </div>
         {def.info && <p className="dim small">{def.info}</p>}
+        {def.approx && !def.info && (
+          <p className="dim small">This shape is an approximation, not part of the anatomical dataset.</p>
+        )}
         <button className="btn primary block" onClick={addNote}>
           <Icon name="plus" /> Log how it feels here
         </button>

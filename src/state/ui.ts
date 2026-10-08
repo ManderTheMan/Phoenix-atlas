@@ -64,6 +64,7 @@ const DEFAULT_LAYERS: Record<LayerId, LayerState> = {
   muscular: { visible: true, opacity: 1 },
   skeletal: { visible: true, opacity: 1 },
   nerves: { visible: false, opacity: 1 },
+  vascular: { visible: false, opacity: 1 },
   organs: { visible: false, opacity: 1 },
 };
 
@@ -118,6 +119,13 @@ export const useUI = create<UIState>()(
     {
       name: 'phoenix-atlas-ui',
       storage: safeStorage,
+      // layers added in later versions (e.g. vessels) get their defaults
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<UIState>;
+        const layers = { ...DEFAULT_LAYERS };
+        for (const id of Object.keys(layers) as LayerId[]) if (p.layers?.[id]) layers[id] = p.layers[id];
+        return { ...current, ...p, layers };
+      },
       partialize: (s) => ({
         layers: s.layers,
         showDeep: s.showDeep,

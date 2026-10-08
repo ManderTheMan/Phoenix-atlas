@@ -17,8 +17,8 @@ const notes: Note[] = Array.from({ length: 12 }, (_, i) => ({
   feeling: -4 + i * 0.6,
   sensations: ['ache'],
   tags: ['left-knee', i % 2 ? 'running' : 'strength'],
-  locations: [{ structureId: 'vastus-medialis-l' }],
-  structureIds: ['vastus-medialis-l'],
+  locations: [{ structureId: 'muscular.vastus_medialis_muscle_l' }],
+  structureIds: ['muscular.vastus_medialis_muscle_l'],
   links: [],
   private: i === 5,
   workout: i % 3 === 0 ? { exercises: [{ name: 'Back squat', sets: 5, reps: 5, load: 100, unit: 'kg' }], durationMin: 60, rpe: 8 } : undefined,
@@ -30,9 +30,9 @@ describe('report', () => {
     const d = buildReportData(notes, metrics, [], defaultReportOptions(30));
     expect(d.notes.length).toBe(notes.filter((n) => !n.private && n.date >= d.opts.from).length);
     expect(d.notes.some((n) => n.private)).toBe(false);
-    expect(d.improving[0]?.structureId).toBe('vastus-medialis-l');
+    expect(d.improving[0]?.structureId).toBe('muscular.vastus_medialis_muscle_l');
     expect(d.metrics[0].metric).toBe('sleep_hours');
-    expect(d.colors.has('vastus-medialis-l')).toBe(true);
+    expect(d.colors.has('muscular.vastus_medialis_muscle_l')).toBe(true);
   });
 
   it('renders a PDF, CSV and a text summary', async () => {

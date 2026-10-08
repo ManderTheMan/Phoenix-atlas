@@ -64,7 +64,7 @@ export default function ReportsPage() {
     if (opts.sections.bodyMap) {
       try {
         snaps.surface = await renderBodySnapshots({ colors: data.colors, notes: data.notes, kind: 'surface' });
-        if (['skeletal', 'nerves', 'organs', 'deep'].some((l) => data.layersWithNotes.has(l)))
+        if (['skeletal', 'nerves', 'vascular', 'organs', 'deep'].some((l) => data.layersWithNotes.has(l)))
           snaps.deep = await renderBodySnapshots({ colors: data.colors, notes: data.notes, kind: 'deep' });
       } catch (e) {
         console.warn('Body map rendering failed', e);

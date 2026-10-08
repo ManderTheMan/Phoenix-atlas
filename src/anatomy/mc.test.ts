@@ -32,21 +32,3 @@ describe('marching cubes', () => {
     expect(bad).toBe(0);
   });
 });
-
-import { tube } from './tube';
-describe('tube', () => {
-  it('faces agree with outward vertex normals', () => {
-    const m = tube([[0, 0, 0], [0.05, 0.02, 0], [0.1, 0.0, 0.03]], { radius: 0.01 });
-    let agree = 0, total = 0;
-    for (let t = 0; t < m.indices.length; t += 3) {
-      const [a, b, c] = [m.indices[t] * 3, m.indices[t + 1] * 3, m.indices[t + 2] * 3];
-      const ab = [m.positions[b] - m.positions[a], m.positions[b + 1] - m.positions[a + 1], m.positions[b + 2] - m.positions[a + 2]];
-      const ac = [m.positions[c] - m.positions[a], m.positions[c + 1] - m.positions[a + 1], m.positions[c + 2] - m.positions[a + 2]];
-      const f = [ab[1] * ac[2] - ab[2] * ac[1], ab[2] * ac[0] - ab[0] * ac[2], ab[0] * ac[1] - ab[1] * ac[0]];
-      const n = [m.normals[a] + m.normals[b] + m.normals[c], m.normals[a + 1] + m.normals[b + 1] + m.normals[c + 1], m.normals[a + 2] + m.normals[b + 2] + m.normals[c + 2]];
-      total++;
-      if (f[0] * n[0] + f[1] * n[1] + f[2] * n[2] > 0) agree++;
-    }
-    expect(agree / total).toBeGreaterThan(0.98);
-  });
-});

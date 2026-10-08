@@ -5,34 +5,17 @@ import { notesInWindow } from '../analysis/status';
 import Icon from '../components/Icon';
 import NoteCard from '../components/notes/NoteCard';
 import NoteEditor from '../components/notes/NoteEditor';
-import BodyViewer, { type Pin } from '../components/viewer/BodyViewer';
+import BodyViewer, { GHOST_OPACITY, structureShown, type Pin } from '../components/viewer/BodyViewer';
 import LayerPanel from '../components/viewer/LayerPanel';
 import StructurePanel from '../components/viewer/StructurePanel';
 import TimeBar from '../components/viewer/TimeBar';
 import { emptyDraft, saveNote, deleteNote } from '../db/notes';
 import { useNotesLoaded } from '../hooks/useData';
 import { feelingColor, formatFeeling } from '../lib/feeling';
-import { loadAtlasModel, type AtlasModel } from '../model/atlasModel';
 import { useUI, type Selection } from '../state/ui';
-
-function useModel() {
-  const [model, setModel] = useState<AtlasModel | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    let alive = true;
-    loadAtlasModel()
-      .then((m) => alive && setModel(m))
-      .catch((e) => alive && setError(String(e?.message ?? e)));
-    return () => {
-      alive = false;
-    };
-  }, []);
-  return { model, error };
-}
 
 export default function AtlasPage() {
   const ui = useUI();
-  const { model, error } = useModel();
   const { notes, loaded } = useNotesLoaded();
   const [saving, setSaving] = useState(false);
   const [sheet, setSheet] = useState<'collapsed' | 'open' | 'full'>('collapsed');
@@ -138,7 +121,7 @@ export default function AtlasPage() {
             <h2>Tap the body to log how it feels</h2>
           </div>
           <p className="dim small">
-            Pick a spot on any layer — skin, muscles, bones, nerves or organs — then rate it from −5 to +5. Colours on the body show how each
+            Pick a spot on any layer — skin, muscles, bones, nerves, vessels or organs — then rate it from −5 to +5. Colours on the body show how each
             part has felt recently; scrub the timeline to watch it change.
           </p>
           <div className="row wrap">
@@ -164,7 +147,8 @@ export default function AtlasPage() {
                   style={{ background: 'none', border: 0, padding: '6px 2px', cursor: 'pointer', textAlign: 'left' }}
                   onClick={() => {
                     const def = STRUCTURE_BY_ID.get(h.structureId)!;
-                    if (!ui.layers[def.layer].visible || ui.layers[def.layer].opacity < 0.35) ui.setLayer(def.layer, { visible: true, opacity: 1 });
+                    if (!ui.layers[def.layer].visible || ui.layers[def.layer].opacity < GHOST_OPACITY) ui.setLayer(def.layer, { visible: true, opacity: 1 });
+                    if (!structureShown(def.id, ui.showDeep)) ui.set({ showDeep: false });
                     const n = notes.find((x) => x.structureIds.includes(h.structureId));
                     const loc = n?.locations.find((l) => l.structureId === h.structureId);
                     ui.set({ selection: loc ?? { structureId: h.structureId } });
@@ -205,37 +189,18 @@ export default function AtlasPage() {
   return (
     <div className="atlas">
       <div className="atlas-stage">
-        {model ? (
-          <BodyViewer
-            model={model}
-            layers={ui.layers}
-            showDeep={ui.showDeep}
-            colorMode={ui.colorMode}
-            colors={colors}
-            selection={ui.selection}
-            pins={pins}
-            onPick={onPick}
-            onPinClick={(id) => ui.openNote(id)}
-            viewRequest={ui.viewRequest}
-            highlight={highlight}
-          />
-        ) : (
-          <div className="viewer-loading">
-            <div>
-              {error ? (
-                <>
-                  <p>Couldn’t load the body model.</p>
-                  <p className="small muted">{error}</p>
-                </>
-              ) : (
-                <>
-                  <div className="spinner" />
-                  <p>Loading the atlas…</p>
-                </>
-              )}
-            </div>
-          </div>
-        )}
+        <BodyViewer
+          layers={ui.layers}
+          showDeep={ui.showDeep}
+          colorMode={ui.colorMode}
+          colors={colors}
+          selection={ui.selection}
+          pins={pins}
+          onPick={onPick}
+          onPinClick={(id) => ui.openNote(id)}
+          viewRequest={ui.viewRequest}
+          highlight={highlight}
+        />
         <LayerPanel />
         <div className="overlay view-buttons" role="group" aria-label="Camera view">
           {(['front', 'back', 'left', 'right'] as const).map((v) => (

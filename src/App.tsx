@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect } from 'react';
 import { Toast } from './components/common';
 import Icon from './components/Icon';
 import NoteModals from './components/notes/NoteModals';
+import { resnapLegacyPoints } from './db/resnap';
 import AtlasPage from './pages/AtlasPage';
 import JournalPage from './pages/JournalPage';
 import SettingsPage from './pages/SettingsPage';
@@ -38,6 +39,10 @@ export default function App() {
   useEffect(() => {
     if (location.hash.replace(/^#\/?/, '') !== route) history.replaceState(null, '', `#/${route}`);
   }, [route]);
+  // notes from before the anatomical atlas keep their places on the new body
+  useEffect(() => {
+    resnapLegacyPoints().catch((e) => console.warn('Could not move old note pins onto the atlas', e));
+  }, []);
 
   return (
     <div className="app">

@@ -1,22 +1,31 @@
 # Phoenix Atlas
 
-A personal body-tracking and analysis app. Tap anywhere on a 3D human body
-(skin, muscles, bones, nerves or organs) to write a dated note about how it
-feels, and watch the body change colour as you track workouts, symptoms,
+A personal body-tracking and analysis app. Tap anywhere on an anatomically
+detailed 3D human body (skin regions, muscles, bones, nerves, vessels or organs)
+to write a dated note about how it feels, and watch the body change colour as you track workouts, symptoms,
 movement, energy and general health over time. Import your Google health data
 and export PDF reports to share with your coach.
 
 ![Atlas view](docs/atlas.jpg)
 
-| Layers (nerves, organs, skeleton) | Phone | Coach report (PDF) |
+| Layers (skeleton, nerves, vessels, organs) | Phone | Coach report (PDF) |
 | --- | --- | --- |
 | ![Layers](docs/layers.jpg) | ![Mobile](docs/mobile.jpg) | ![Report](docs/report.jpg) |
 
 ## Features
 
 **3D atlas**
-- A generated anatomical model with five layers: **Surface** (22 kinds of skin region, left and right), **Muscular** (≈80 muscles, with surface and deep sets), **Skeletal** (skull, every vertebra C1–L5, ribs, limbs, hands, feet), **Nerves** (spinal cord, brachial plexus, sciatic, femoral, facial…), and **Organs** (brain, heart, lungs, liver, gut…).
-- Turn layers on and off and set each layer's opacity. A layer below 35% opacity becomes a "ghost": you can still see it, but taps go through to whatever is underneath.
+- An anatomical model of **2,705 named structures** built from [Z-Anatomy](https://github.com/Z-Anatomy/Models-of-human-anatomy), whose models are based on BodyParts3D (segmented from real scan data). It has six layers:
+  - **Surface**: 250 skin regions (anterior region of thigh, popliteal fossa, lumbar region…).
+  - **Muscular**: 497 muscles, muscle heads and key fasciae, split into superficial and deep sets.
+  - **Skeletal**: every bone, plus ligaments, cartilages, intervertebral discs and menisci.
+  - **Nerves**: brain, spinal cord, cranial nerves, plexuses and peripheral nerves down to the digital branches.
+  - **Vessels**: 659 arteries and veins.
+  - **Organs**: heart chambers and valves, lungs by lobe, digestive and urinary organs, glands and lymph nodes.
+- Every structure shows its English and Latin (Terminologia Anatomica) name. Commonly logged muscles also show what they do and which nerve supplies them.
+- Search understands everyday words, so "hamstring", "IT band" or "achilles" find the right structures.
+- Turn layers on and off and set each layer's opacity. Layers load on demand, and each draws in a single call, so the full model runs on a phone. A layer below 35% opacity becomes a "ghost": you can still see it, but taps go through to whatever is underneath.
+- Switch muscles to **Deep** to peel away the superficial muscles and reach the ones underneath (psoas, rotator cuff, erector spinae…).
 - Tap a structure to see its status, its feeling chart over time and its notes, then log a new note pinned to the exact spot you tapped.
 - **Colour coding** by:
   - **Feeling**: an average of your notes in the time window, with recent notes counting more. Red means worse and blue means better.
@@ -70,7 +79,7 @@ npm install
 npm run dev        # http://localhost:5173
 ```
 
-The first `npm run dev` or `npm run build` generates the 3D model (`public/atlas-model.bin`) from the procedural anatomy in `src/anatomy`. This takes about 6 seconds and only runs again when the anatomy sources change.
+The 3D model ships with the repository in `public/atlas/`, so there is nothing to generate. To rebuild it from the source data, see [Anatomy data](#anatomy-data).
 
 To explore with sample data, open **Settings → Load demo data**. It loads three months of notes and health metrics, all tagged `#demo`, and you can remove them in one tap.
 
@@ -114,16 +123,16 @@ If you use the Google Health sync, add the deployed origin to your OAuth client.
 ## Development
 
 ```bash
-npm test           # unit tests (parsers, analysis, notes, reports, marching cubes)
+npm test           # unit tests (parsers, analysis, notes, reports, anatomy data)
 npm run typecheck
-npm run build      # generates the model, type-checks and builds to dist/
-npm run model      # force-regenerate the 3D model
+npm run build      # type-checks and builds to dist/
 ```
 
 | Path | What's there |
 | --- | --- |
-| `src/anatomy/` | Procedural anatomy: signed distance fields (`sdf.ts`), marching cubes (`mc.ts`), skin, muscles, bones, organs, nerves, and the structure catalog. |
-| `scripts/build-model.ts` | Builds every mesh, simplifies it with meshoptimizer and writes the compressed model file. |
+| `src/anatomy/` | The structure catalog (`catalog.json`, generated), reference notes, the layer file format, and the map from the first model's ids. |
+| `src/model/` | Loads a layer into one merged geometry, picks structures through a BVH, and the shader material that colours and hides structures. |
+| `scripts/build-atlas.ts` | Builds `public/atlas/*.bin` and `catalog.json` from the anatomical dataset. |
 | `src/components/viewer/` | The react-three-fiber body viewer, layer panel, time bar and structure panel. |
 | `src/db/` | Dexie (IndexedDB) schema, notes with links and follow-ups, backup/restore, and demo data. |
 | `src/analysis/` | Per-structure status, trends, correlations, and the colour mapping. |
@@ -131,8 +140,33 @@ npm run model      # force-regenerate the 3D model
 | `src/report/` | Report data, offscreen body snapshots, PDF (jsPDF) and CSV export. |
 | `src/pages/` | Atlas, Journal, Insights, Health data, Reports and Settings. |
 
-The muscles are made by dividing a thin shell under the skin among "muscle regions". Each point belongs to the nearest region, which gives natural grooves between neighbouring muscles. Bones and organs are smooth unions of primitive shapes. Everything is polygonised with marching cubes at build time.
+Each layer is one merged mesh in which every vertex carries the index of its structure. A small data texture holds a colour and flags for each structure, so the viewer can recolour, highlight or hide any of them without extra draw calls. Taps are ray cast through a bounding volume hierarchy (three-mesh-bvh), and nerves and vessels get a ring of extra rays so a near miss still selects them.
+
+## Anatomy data
+
+The model is adapted from the Svitylo 3D Anatomy Atlas data release 1.1.0, which packages:
+
+- **Z-Anatomy** (CC BY-SA 4.0), based on **BodyParts3D, © The Database Center for Life Science** (CC BY-SA 2.1 JP)
+- kidneys from the **Human Reference Atlas** (Browne, Schlehlein; CC BY 4.0)
+- the inner ear and ossicles from **OpenEar** (Sieber et al.; CC BY 4.0)
+
+Phoenix Atlas's adapted model (`public/atlas/*.bin` and `src/anatomy/catalog.json`) is shared under **CC BY-SA 4.0**. [`public/atlas/ATTRIBUTION.md`](public/atlas/ATTRIBUTION.md) has the full attribution and the list of changes.
+
+Some limits to know about:
+
+- The source's cerebral cortex isn't openly licensed, so the two cerebral hemispheres are an approximate shape fitted to the skull. They are labelled "approximate" in the app.
+- The upstream release hasn't had a formal anatomical review yet.
+- The model is one adult male body.
+
+To rebuild the model:
+
+```bash
+npm run anatomy:fetch   # downloads the data release from npm into .cache/anatomy (about 70 MB)
+npm run model           # checks the checksums and writes public/atlas/*.bin and src/anatomy/catalog.json
+```
+
+Notes saved with the first, procedural body model are migrated automatically. Their structures are mapped to the closest atlas structure, and their pins are moved onto the new surface.
 
 ## Disclaimer
 
-Phoenix Atlas is a personal tracking tool, not a medical device. It doesn't diagnose or treat anything. Talk to a qualified professional about symptoms that concern you.
+Phoenix Atlas is a personal tracking tool, not a medical device. Its anatomy is detailed and uses real anatomical names, but it is meant for education and tracking. It doesn't diagnose or treat anything. Talk to a qualified professional about symptoms that concern you.

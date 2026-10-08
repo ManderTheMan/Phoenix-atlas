@@ -1,12 +1,9 @@
 // Renders front/back images of the colour-coded body for reports, using an
-// offscreen three.js renderer and the same meshes as the live viewer.
+// offscreen three.js renderer and the same layer meshes as the live viewer.
 import {
   AmbientLight,
-  BufferAttribute,
-  BufferGeometry,
   Color,
   DirectionalLight,
-  DoubleSide,
   HemisphereLight,
   Mesh,
   MeshStandardMaterial,
@@ -15,13 +12,12 @@ import {
   SphereGeometry,
   WebGLRenderer,
 } from 'three';
-import { STRUCTURES } from '../anatomy/catalog';
-import { SURFACE_REGIONS } from '../anatomy/skin';
-import type { LayerId } from '../anatomy/types';
-import { baseColor } from '../analysis/colors';
+import { STRUCTURE_BY_ID } from '../anatomy/catalog';
+import { LAYER_BY_ID, type LayerId } from '../anatomy/types';
 import type { Note } from '../db/db';
-import { feelingColor, hexRgb } from '../lib/feeling';
-import { loadAtlasModel } from '../model/atlasModel';
+import { feelingColor } from '../lib/feeling';
+import { loadLayers } from '../model/atlasModel';
+import { createLayerMaterial } from '../model/layerMaterial';
 
 export type SnapshotKind = 'surface' | 'deep';
 
@@ -34,23 +30,42 @@ export interface SnapshotOptions {
   background?: string;
 }
 
-const LAYERS: Record<SnapshotKind, { layer: LayerId; opacity: number; deep?: boolean }[]> = {
+interface LayerSpec {
+  layer: LayerId;
+  opacity: number;
+  /** Muscles only: true = deep muscles only (superficial ones peeled away). */
+  deepOnly?: boolean;
+  /** Only drawn when a note in the report is on this layer. */
+  ifUsed?: boolean;
+}
+
+const LAYERS: Record<SnapshotKind, LayerSpec[]> = {
   surface: [
     { layer: 'skeletal', opacity: 1 },
-    { layer: 'muscular', opacity: 1, deep: false },
+    { layer: 'muscular', opacity: 1 },
     { layer: 'skin', opacity: 0.12 },
   ],
   deep: [
     { layer: 'skeletal', opacity: 1 },
     { layer: 'organs', opacity: 1 },
-    { layer: 'nerves', opacity: 1 },
-    { layer: 'muscular', opacity: 1, deep: true },
+    { layer: 'nerves', opacity: 1, ifUsed: true },
+    { layer: 'vascular', opacity: 1, ifUsed: true },
+    { layer: 'muscular', opacity: 1, deepOnly: true },
   ],
 };
 
+const RENDER_ORDER: Record<LayerId, number> = { organs: 1, skeletal: 2, vascular: 3, nerves: 3, muscular: 4, skin: 20 };
+
 /** Returns [front, back] PNG data URLs. */
 export async function renderBodySnapshots(o: SnapshotOptions): Promise<[string, string]> {
-  const model = await loadAtlasModel();
+  const used = new Set<LayerId>();
+  for (const n of o.notes) for (const id of n.structureIds) {
+    const l = STRUCTURE_BY_ID.get(id)?.layer;
+    if (l) used.add(l);
+  }
+  const specs = LAYERS[o.kind].filter((s) => !s.ifUsed || used.has(s.layer));
+  const models = await loadLayers(specs.map((s) => s.layer));
+
   const width = o.width ?? 520;
   const height = o.height ?? 860;
   const canvas = document.createElement('canvas');
@@ -70,45 +85,23 @@ export async function renderBodySnapshots(o: SnapshotOptions): Promise<[string, 
   const disposables: { dispose: () => void }[] = [];
 
   const included = new Set<string>();
-  for (const spec of LAYERS[o.kind]) {
-    if (spec.layer === 'skin') {
-      const base = model.geometries.get('skin');
-      if (!base) continue;
-      const g = new BufferGeometry();
-      g.setAttribute('position', base.getAttribute('position'));
-      g.setAttribute('normal', base.getAttribute('normal'));
-      g.setIndex(base.getIndex());
-      const regions = model.skinRegions;
-      const n = base.getAttribute('position').count;
-      const col = new Float32Array(n * 3);
-      const baseRgb = hexRgb(baseColor('skin', 'feeling'));
-      const regionRgb = SURFACE_REGIONS.map((r) => (o.colors.get(r.id) ? hexRgb(o.colors.get(r.id)!) : baseRgb).map((v) => (v / 255) ** 2.2));
-      for (let i = 0; i < n; i++) col.set(regionRgb[regions ? regions[i] : 0], i * 3);
-      g.setAttribute('color', new BufferAttribute(col, 3));
-      const m = new MeshStandardMaterial({ vertexColors: true, transparent: true, opacity: spec.opacity, depthWrite: false, side: DoubleSide, roughness: 0.7 });
-      const mesh = new Mesh(g, m);
-      mesh.renderOrder = 20;
-      scene.add(mesh);
-      disposables.push(g, m);
-      for (const r of SURFACE_REGIONS) included.add(r.id);
-      continue;
-    }
-    for (const def of STRUCTURES) {
-      if (def.layer !== spec.layer) continue;
-      if (spec.deep !== undefined && !!def.deep !== spec.deep) continue;
-      const g = model.geometries.get(def.id);
-      if (!g) continue;
-      const m = new MeshStandardMaterial({
-        color: o.colors.get(def.id) ?? baseColor(def.layer, 'feeling'),
-        roughness: def.layer === 'skeletal' ? 0.55 : 0.62,
-        transparent: spec.opacity < 1,
-        opacity: spec.opacity,
-      });
-      scene.add(new Mesh(g, m));
-      disposables.push(m);
-      included.add(def.id);
-    }
-  }
+  specs.forEach((spec, k) => {
+    const m = models[k];
+    const lm = createLayerMaterial(spec.layer, m.ids.length);
+    lm.setStates(m.ids.length, (i) => {
+      const id = m.ids[i];
+      const visible = !(spec.deepOnly && !STRUCTURE_BY_ID.get(id)?.deep);
+      if (visible) included.add(id);
+      return { visible, color: o.colors.get(id) };
+    });
+    lm.uniforms.uNeutral.value.set(LAYER_BY_ID[spec.layer].color);
+    lm.setOpacity(spec.opacity);
+    const mesh = new Mesh(m.geometry, lm.material);
+    mesh.renderOrder = RENDER_ORDER[spec.layer];
+    mesh.frustumCulled = false;
+    scene.add(mesh);
+    disposables.push(lm);
+  });
 
   // pins for notes in the period
   const pinGeo = new SphereGeometry(0.009, 14, 10);
@@ -128,8 +121,8 @@ export async function renderBodySnapshots(o: SnapshotOptions): Promise<[string, 
   const cam = new PerspectiveCamera(24, width / height, 0.1, 30);
   const shots: string[] = [];
   for (const dir of [1, -1]) {
-    cam.position.set(0.0, 0.95, 4.6 * dir);
-    cam.lookAt(0, 0.89, 0);
+    cam.position.set(0, 0.92, 0.05 + 4.6 * dir);
+    cam.lookAt(0, 0.87, 0.05);
     renderer.render(scene, cam);
     shots.push(canvas.toDataURL('image/png'));
   }
