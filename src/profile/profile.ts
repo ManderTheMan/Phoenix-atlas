@@ -120,7 +120,7 @@ export function currentValues(entries: MeasurementEntry[]): Partial<Record<Measu
 }
 
 /** Saves the measurements taken on a day (merging with an entry already saved that day). */
-export async function saveMeasurements(values: Partial<Record<MeasureKey, number>>, date = Date.now(), source?: string): Promise<void> {
+export async function saveMeasurements(values: Partial<Record<MeasureKey, number>>, date = Date.now(), source?: string, extra?: MeasurementEntry['extra']): Promise<void> {
   const clean = Object.fromEntries(Object.entries(values).filter(([, v]) => typeof v === 'number' && Number.isFinite(v) && v > 0)) as Record<string, number>;
   if (!Object.keys(clean).length) return;
   const day = new Date(date);
@@ -128,8 +128,9 @@ export async function saveMeasurements(values: Partial<Record<MeasureKey, number
   const start = day.getTime(), end = start + 86_400_000;
   const same = await db.measurements.where('date').between(start, end, true, false).filter((e) => e.source === source).first();
   await db.transaction('rw', db.measurements, db.metrics, async () => {
-    if (same) await db.measurements.put({ ...same, values: { ...same.values, ...clean } });
-    else await db.measurements.put({ id: uid(), date, values: clean, ...(source ? { source } : {}) });
+    const more = extra && Object.keys(extra).length ? { extra: { ...same?.extra, ...extra } } : {};
+    if (same) await db.measurements.put({ ...same, values: { ...same.values, ...clean }, ...more });
+    else await db.measurements.put({ id: uid(), date, values: clean, ...(source ? { source } : {}), ...more });
     // weight also lives with the other health metrics, so it shows in Health data and Insights
     if (clean.weight) {
       const d = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;

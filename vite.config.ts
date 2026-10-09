@@ -37,6 +37,12 @@ export default defineConfig({
             handler: 'CacheFirst',
             options: { cacheName: 'phoenix-vision', expiration: { maxEntries: 12 } },
           },
+          {
+            // the PDF reader for body scan reports, fetched the first time a report is imported
+            urlPattern: ({ url }) => url.pathname.includes('pdf.worker'),
+            handler: 'CacheFirst',
+            options: { cacheName: 'phoenix-pdf', expiration: { maxEntries: 2 } },
+          },
         ],
       },
     }),

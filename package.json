@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Phoenix Atlas \u2014 tap a 3D body to log how it feels, track changes over time, import Google health data and share reports with your coach.",
+  "description": "Phoenix Atlas — tap a 3D body to log how it feels, track changes over time, import Google health data and share reports with your coach.",
   "scripts": {
     "predev": "node scripts/vision-assets.mjs",
     "dev": "vite",
@@ -27,6 +27,7 @@
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
     "papaparse": "^5.7.0",
+    "pdfjs-dist": "6.3.289",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "sql.js": "^1.14.2",

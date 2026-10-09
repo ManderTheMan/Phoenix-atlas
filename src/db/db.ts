@@ -99,6 +99,8 @@ export interface MeasurementEntry {
   date: number;
   values: Record<string, number>;
   source?: string;
+  /** Further measurements from a body scan that the profile doesn't use, by label (cm, kg or %). */
+  extra?: Record<string, { label: string; value: number; unit: string }>;
 }
 
 export type MediaKind = 'photo' | 'video';

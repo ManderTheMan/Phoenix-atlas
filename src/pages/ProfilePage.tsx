@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { LayerId } from '../anatomy/types';
 import LineChart from '../components/charts/LineChart';
 import { Check, ConfirmButton, Seg } from '../components/common';
@@ -25,7 +25,9 @@ import {
   type MeasureDef,
   type MeasureKey,
   type Profile,
+  type Units,
 } from '../profile/profile';
+import { parseScanText, readPdfLines, type ScanReport } from '../profile/scan';
 import type { LayerState } from '../state/ui';
 import { useUI } from '../state/ui';
 
@@ -249,6 +251,7 @@ export default function ProfilePage() {
                 </label>
               </div>
               <p className="tiny muted">Hover or long-press a field to see how to measure it. Empty fields use the reference body’s proportions, scaled to your height (shown faded).</p>
+              <ScanImport units={units} />
 
               <h4>Body</h4>
               <div className="measure-grid">{group('body').map((m) => field(m))}</div>
@@ -332,6 +335,11 @@ export default function ProfilePage() {
                               .join(' · ')}
                           </span>
                           {e.source === 'demo' && <span className="chip" style={{ fontSize: 11 }}>demo</span>}
+                          {e.source === 'Body scan' && (
+                            <span className="chip" style={{ fontSize: 11 }} title={Object.values(e.extra ?? {}).map((x) => `${x.label} ${formatScanValue(x.value, x.unit, units)}`).join('\n')}>
+                              scan{e.extra ? ` +${Object.keys(e.extra).length}` : ''}
+                            </span>
+                          )}
                           <ConfirmButton className="btn ghost small" onConfirm={() => deleteMeasurement(e.id)}>
                             <Icon name="trash" size={14} />
                           </ConfirmButton>
@@ -489,6 +497,93 @@ function Proportions({ dims, values }: { dims: BodyDims; values: Partial<Record<
             </span>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function formatScanValue(v: number, unit: string, units: Units): string {
+  if (unit === 'cm' || unit === 'kg') return formatMeasure(v, unit, units);
+  return `${v} ${unit === '%' ? '%' : unit}`;
+}
+
+/** Reads a 3D body scan report (Styku PDF) into a dated measurement entry. The PDF itself isn't kept. */
+function ScanImport({ units }: { units: Units }) {
+  const ui = useUI();
+  const input = useRef<HTMLInputElement>(null);
+  const [report, setReport] = useState<ScanReport | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const choose = async (file?: File) => {
+    if (!file) return;
+    setBusy(true);
+    try {
+      const r = parseScanText(await readPdfLines(file));
+      if (!r) ui.showToast('That PDF doesn’t look like a body scan report.');
+      setReport(r);
+    } catch (e) {
+      ui.showToast(`Couldn’t read that PDF: ${(e as Error).message}`);
+    } finally {
+      setBusy(false);
+      if (input.current) input.current.value = '';
+    }
+  };
+
+  const save = async () => {
+    if (!report) return;
+    await saveMeasurements(report.values, report.date ?? Date.now(), 'Body scan', report.extra);
+    ui.showToast(`Saved the scan from ${formatDate(report.date ?? Date.now())}.`);
+    setReport(null);
+  };
+
+  if (!report)
+    return (
+      <div className="row wrap" style={{ gap: 8 }}>
+        <button className="btn small" disabled={busy} onClick={() => input.current?.click()}>
+          <Icon name="upload" /> {busy ? 'Reading…' : 'Import a body scan (PDF)'}
+        </button>
+        <span className="tiny muted">Styku summary reports and similar. Read on this device; only the measurements are kept.</span>
+        <input ref={input} type="file" accept="application/pdf,.pdf" hidden onChange={(e) => void choose(e.target.files?.[0])} />
+      </div>
+    );
+
+  const keys = Object.keys(report.values) as MeasureKey[];
+  const extra = Object.values(report.extra);
+  return (
+    <div className="scan-preview col">
+      <div className="row between wrap">
+        <strong className="small">
+          Body scan{report.date ? ` from ${formatDate(report.date)}` : ''} · {keys.length} measurements
+          {extra.length ? ` · ${extra.length} more details` : ''}
+        </strong>
+        <span className="tiny muted">Units on the report: {report.units === 'imperial' ? 'lbs, in' : 'kg, cm'}</span>
+      </div>
+      <div className="chips">
+        {keys.map((k) => (
+          <span key={k} className="chip mini">
+            {measureLabel(k)} {formatMeasure(report.values[k], MEASURE_BY_KEY.get(k)!.unit, units)}
+          </span>
+        ))}
+      </div>
+      {extra.length > 0 && (
+        <details className="tiny dim">
+          <summary>Also on the report</summary>
+          {extra.map((x) => `${x.label} ${formatScanValue(x.value, x.unit, units)}`).join(' · ')}
+        </details>
+      )}
+      {report.warnings.map((w) => (
+        <span key={w} className="tiny warn-text">
+          {w}
+        </span>
+      ))}
+      <p className="tiny muted">It’s saved under the scan’s date. Newer measurements still decide how the 3D body is fitted.</p>
+      <div className="row wrap">
+        <button className="btn primary small" onClick={() => void save()}>
+          <Icon name="check" /> Save to history
+        </button>
+        <button className="btn ghost small" onClick={() => setReport(null)}>
+          Cancel
+        </button>
       </div>
     </div>
   );
