@@ -119,6 +119,13 @@ The demo photos are renders of the 3D body fitted to the demo measurements, and 
   - your notes
 - **Share** the PDF directly from your phone, or export a **CSV** of your notes, or copy a short **text summary** to paste into a message.
 
+**Working with your coach** (Coach page, linked from Reports and Settings)
+- **Pair once by QR code.** Your coach scans it with their phone's camera; both screens show the same check code. The pairing secret stays on the two phones and isn't in backups.
+- **Encrypted share files.** Choose a period and what to include: form clips with their joint tracking, progress photos, notes and workouts, measurements, plus a message. The file is encrypted on your phone (AES-256-GCM, a fresh key per file, every chunk checked), so it can go by email, Drive or any messaging app. Only your coach's phone can open it.
+- **Your coach's side.** Your clips, by movement with their tracked depth, plus your notes and latest measurements. These are kept apart from the coach's own media and removed if they remove you.
+- **Feedback.** Your coach comments on clips and draws angles, then sends an encrypted feedback file back. The comments and drawings appear on your clips, with a feedback inbox.
+- No accounts or servers. Private items are never shared, and archive clips' file names stay on your phone.
+
 **Private by design**
 - Everything is stored on your device in IndexedDB, including photos and videos. Nothing is uploaded anywhere.
 - Back up to a JSON file, or to a ZIP that also holds every photo and video, and restore either from Settings.
@@ -190,6 +197,7 @@ npm run build      # type-checks and builds to dist/
 | `src/components/media/` | The camera, the viewer with its measuring tools, joint tracking and quality panels, the comparison and time-lapse screens, and the Dataset tab. |
 | `src/vision/` | Pose tracking (MediaPipe runner and job queue), joint angles, rep detection, guessing the movement, quality checks, and the tracker test. |
 | `src/dataset/` | Dataset export: ids, metadata, dataset card, datasheet, face pixelation. |
+| `src/coach/` | Pairing codes and links, encrypted share and feedback files (WebCrypto), and importing them on the other phone. |
 | `src/media/archive.ts` | Reading the archive tool's packs and folders, and bringing clips in with their tracks and suggestions. |
 | `tools/archive/` | The archive tool (Python): finds, sorts and tracks videos in folders and Takeout zips, with its own guide and tests. |
 | `scripts/vision-assets.mjs` | Copies the pose-tracking WebAssembly runtime into `public/vision/` and downloads the pinned model (checked by SHA-256). Runs before `dev` and `build`. |

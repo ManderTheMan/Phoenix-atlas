@@ -79,6 +79,7 @@ const extOf = (mime: string) => MEDIA_EXT.find(([r]) => r.test(mime))?.[1] ?? 'j
 export async function mediaBackupSize(): Promise<{ count: number; bytes: number }> {
   let count = 0, bytes = 0;
   await db.media.each((m) => {
+    if (m.owner) return;
     count++;
     bytes += m.size + (m.thumb?.size ?? 0);
   });
@@ -88,7 +89,8 @@ export async function mediaBackupSize(): Promise<{ count: number; bytes: number 
 /** A ZIP with backup.json and every photo and video. */
 export async function makeMediaBackup(onProgress?: (done: number, total: number) => void): Promise<Blob> {
   const b = await makeBackup();
-  const items = await db.media.toArray();
+  // an athlete's shared clips (on a coach's device) aren't the coach's to back up; pairings aren't backed up either
+  const items = (await db.media.toArray()).filter((m) => !m.owner);
   const entries: ZipEntry[] = [];
   const meta: Omit<MediaItem, 'thumb'>[] = [];
   for (const m of items) {

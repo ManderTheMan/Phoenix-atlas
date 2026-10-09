@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { MediaItem } from '../../db/db';
 import { DAY, formatDate } from '../../lib/dates';
-import { alignTransform, formSeries, marksAt, markName, markValue, measurementChanges, POSE_BY_ID, poseSeries, syncTime, updateMedia, useMedia, useMediaUrl } from '../../media/media';
+import { alignTransform, formSeries, marksAt, markName, markValue, measurementChanges, POSE_BY_ID, poseSeries, syncTime, updateMedia, useAllMedia, useMediaUrl } from '../../media/media';
 import { useMediaUI } from '../../media/mediaUI';
 import { ensureDuration } from '../../media/process';
 import { PATTERN_BY_ID, type PatternId } from '../../movement/patterns';
@@ -36,7 +36,7 @@ function Pane({ item, url, videoRef, t, label }: { item: MediaItem; url: string 
 
 export default function MediaCompare({ a: aId, b: bId }: { a: string; b: string }) {
   const mui = useMediaUI();
-  const media = useMedia();
+  const media = useAllMedia();
   const { entries, profile } = useBody();
   const a = media.find((m) => m.id === aId), b = media.find((m) => m.id === bId);
   const aUrl = useMediaUrl(aId), bUrl = useMediaUrl(bId);

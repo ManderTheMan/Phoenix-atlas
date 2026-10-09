@@ -132,14 +132,19 @@ export function formatDuration(s: number | undefined): string {
 
 const NONE: MediaItem[] = [];
 
-/** All photos and videos, newest first (live). */
+/** Your own photos and videos, newest first (live). Clips an athlete shared with you as their coach are left out. */
 export function useMedia(): MediaItem[] {
-  return useLiveQuery(() => db.media.orderBy('date').reverse().toArray(), [], NONE);
+  return useLiveQuery(() => db.media.orderBy('date').reverse().filter((m) => !m.owner).toArray(), [], NONE);
 }
 
 export function useMediaLoaded(): { media: MediaItem[]; loaded: boolean } {
-  const media = useLiveQuery(() => db.media.orderBy('date').reverse().toArray(), []);
+  const media = useLiveQuery(() => db.media.orderBy('date').reverse().filter((m) => !m.owner).toArray(), []);
   return { media: media ?? NONE, loaded: media !== undefined };
+}
+
+/** Everything, including athletes' shared clips: for the viewer and comparisons, which then keep to one person's clips. */
+export function useAllMedia(): MediaItem[] {
+  return useLiveQuery(() => db.media.orderBy('date').reverse().toArray(), [], NONE);
 }
 
 const thumbs = new Map<string, { key: number; url: string }>();

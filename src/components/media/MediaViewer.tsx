@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { uid, type MediaItem, type MediaMark } from '../../db/db';
 import { useNotes } from '../../hooks/useData';
+import CoachNote from '../coach/CoachNote';
 import { formatDateTime } from '../../lib/dates';
 import {
   deleteMedia,
@@ -22,7 +23,7 @@ import {
   thumbUrl,
   timeForPhase,
   updateMedia,
-  useMedia,
+  useAllMedia,
   useMediaUrl,
   type P,
 } from '../../media/media';
@@ -77,9 +78,11 @@ function useModelInput(item: MediaItem | undefined) {
 export default function MediaViewer({ id, list }: { id: string; list?: string[] }) {
   const mui = useMediaUI();
   const ui = useUI();
-  const media = useMedia();
+  const all = useAllMedia();
   const notes = useNotes();
-  const item = media.find((m) => m.id === id);
+  const item = all.find((m) => m.id === id);
+  // clips to compare with come from the same person (yours, or one athlete's when you coach)
+  const media = useMemo(() => all.filter((m) => (m.owner ?? '') === (item?.owner ?? '')), [all, item?.owner]);
   const url = useMediaUrl(id);
   const [video, setVideo] = useState<HTMLVideoElement | null>(null);
   const [areaRef, box] = useFit(item ? item.width / Math.max(1, item.height) : 1);
@@ -334,6 +337,7 @@ export default function MediaViewer({ id, list }: { id: string; list?: string[] 
           />
         </div>
 
+        <CoachNote item={item} />
         {tab === 'quality' ? (
           <div className="side-section">
             <QualityPanel item={item} track={track} />

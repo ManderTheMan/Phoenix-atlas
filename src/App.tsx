@@ -9,6 +9,7 @@ import { useProfile } from './profile/profile';
 import AtlasPage from './pages/AtlasPage';
 import JournalPage from './pages/JournalPage';
 import SettingsPage from './pages/SettingsPage';
+import { capturePairLink } from './coach/link';
 import { useUI, type Route } from './state/ui';
 
 const InsightsPage = lazy(() => import('./pages/InsightsPage'));
@@ -17,6 +18,7 @@ const ReportsPage = lazy(() => import('./pages/ReportsPage'));
 const MovementPage = lazy(() => import('./pages/MovementPage'));
 const ProfilePage = lazy(() => import('./pages/ProfilePage'));
 const MediaPage = lazy(() => import('./pages/MediaPage'));
+const CoachPage = lazy(() => import('./pages/CoachPage'));
 
 /** `phone: false` keeps an item out of the phone's bottom bar (it moves to the header). */
 const NAV: { id: Route; label: string; icon: string; phone?: false }[] = [
@@ -30,7 +32,7 @@ const NAV: { id: Route; label: string; icon: string; phone?: false }[] = [
   { id: 'settings', label: 'Settings', icon: 'gear', phone: false },
 ];
 
-const ROUTES = new Set<Route>([...NAV.map((n) => n.id), 'profile']);
+const ROUTES = new Set<Route>([...NAV.map((n) => n.id), 'profile', 'coach']);
 
 export default function App() {
   const route = useUI((s) => s.route);
@@ -39,6 +41,7 @@ export default function App() {
   // keep the URL hash and the route in sync (back button, shareable deep links)
   useEffect(() => {
     const fromHash = () => {
+      if (capturePairLink()) return setRoute('coach');
       const r = location.hash.replace(/^#\/?/, '') as Route;
       if (ROUTES.has(r)) setRoute(r);
     };
@@ -93,6 +96,7 @@ export default function App() {
           {route === 'movement' && <MovementPage />}
           {route === 'profile' && <ProfilePage />}
           {route === 'media' && <MediaPage />}
+          {route === 'coach' && <CoachPage />}
         </Suspense>
       </main>
       <nav className="bottom-nav" aria-label="Main">

@@ -1541,3 +1541,18 @@ ol.steps code, p code, li code { font-family: var(--mono); font-size: 12px; back
 }
 .scan-preview { gap: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 10px; background: rgba(255, 255, 255, 0.02); }
 .scan-preview details summary { cursor: pointer; margin-bottom: 4px; }
+
+/* coach */
+.qr { display: block; border-radius: 10px; flex: none; max-width: 100%; height: auto; }
+.fingerprint { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 20px; font-weight: 700; letter-spacing: 0.08em; color: var(--text); }
+.pair-link { display: block; font-size: 11px; word-break: break-all; background: #0f131b; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; user-select: all; }
+.share-form, .feedback-box { border: 1px solid var(--line); border-radius: 10px; padding: 10px; gap: 10px; }
+.feedback-row { display: flex; align-items: center; gap: 10px; background: none; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; cursor: pointer; text-align: left; color: inherit; }
+.athlete-clips { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.athlete-clip { display: flex; gap: 8px; align-items: center; background: none; border: 1px solid var(--line); border-radius: 10px; padding: 5px; cursor: pointer; text-align: left; color: inherit; min-width: 0; }
+.athlete-clip .mthumb { width: 52px; flex: none; pointer-events: none; }
+.athlete-clip .thumb-badge { display: none; }
+.athlete-note { display: flex; flex-direction: column; gap: 2px; border-left: 2px solid var(--line); padding-left: 8px; }
+.coach-note textarea { width: 100%; }
+.how-list { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+.join-card { border-color: rgba(255, 122, 61, 0.55); }

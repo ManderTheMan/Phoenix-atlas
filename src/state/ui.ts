@@ -6,7 +6,7 @@ import type { Vec3 } from '../db/db';
 import type { NoteDraft } from '../db/notes';
 
 export type ColorMode = 'feeling' | 'trend' | 'activity' | 'anatomy';
-export type Route = 'atlas' | 'movement' | 'media' | 'journal' | 'insights' | 'health' | 'reports' | 'settings' | 'profile';
+export type Route = 'atlas' | 'movement' | 'media' | 'journal' | 'insights' | 'health' | 'reports' | 'settings' | 'profile' | 'coach';
 
 export interface LayerState {
   visible: boolean;
@@ -54,7 +54,7 @@ interface UIState {
   openMovement: (pattern: string) => void;
 }
 
-const ROUTES: Route[] = ['atlas', 'movement', 'media', 'journal', 'insights', 'health', 'reports', 'settings', 'profile'];
+const ROUTES: Route[] = ['atlas', 'movement', 'media', 'journal', 'insights', 'health', 'reports', 'settings', 'profile', 'coach'];
 
 function initialRoute(): Route {
   if (typeof location === 'undefined') return 'atlas';

@@ -108,6 +108,16 @@ export default function SettingsPage() {
         </div>
 
         <div className="card col">
+          <h3>Coach</h3>
+          <p className="dim small">Pair with your coach by QR code, then send them encrypted share files and get their feedback back. No accounts or servers. Pairings aren’t part of backups: pair again on a new phone.</p>
+          <div>
+            <button className="btn" onClick={() => ui.setRoute('coach')}>
+              <Icon name="link" /> Open Coach
+            </button>
+          </div>
+        </div>
+
+        <div className="card col">
           <h3>Demo data</h3>
           <p className="dim small">
             Load three months of example notes (a recovering knee, a lower-back flare-up, a shoulder pinch, workouts, energy and sleep),

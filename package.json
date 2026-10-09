@@ -28,6 +28,7 @@
     "jspdf-autotable": "^5.0.8",
     "papaparse": "^5.7.0",
     "pdfjs-dist": "6.3.289",
+    "qrcode-generator": "2.0.4",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "sql.js": "^1.14.2",

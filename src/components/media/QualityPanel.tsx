@@ -16,7 +16,7 @@ export default function QualityPanel({ item, track }: { item: MediaItem; track: 
   // the previous photo of the same pose, to check the setup was the same
   const previous = useLiveQuery(async () => {
     if (item.kind !== 'photo' || item.purpose !== 'progress') return null;
-    const prev = (await db.media.where('pose').equals(item.pose ?? 'other').toArray()).filter((m) => m.kind === 'photo' && m.date < item.date).sort((a, b) => b.date - a.date)[0];
+    const prev = (await db.media.where('pose').equals(item.pose ?? 'other').toArray()).filter((m) => m.kind === 'photo' && m.date < item.date && (m.owner ?? '') === (item.owner ?? '')).sort((a, b) => b.date - a.date)[0];
     return prev ? ((await db.poses.get(prev.id)) ?? null) : null;
   }, [item.id, item.date, item.pose, item.kind, item.purpose]);
   const checks = useMemo(() => qualityChecks(item, track ?? null, previous), [item, track, previous]);

@@ -127,6 +127,9 @@ export default function ReportsPage() {
             <h1>Coach report</h1>
             <p>Choose what to include, preview it, then download or share a PDF.</p>
           </div>
+          <button className="btn" onClick={() => ui.setRoute('coach')}>
+            <Icon name="link" /> Share clips with your coach
+          </button>
         </div>
 
         <div className="report-grid">

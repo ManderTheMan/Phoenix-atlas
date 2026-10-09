@@ -120,6 +120,8 @@ export interface MediaMark {
   label?: string;
   /** Placed by the pose tracker rather than by hand. */
   source?: 'pose';
+  /** Drawn by your coach (arrived in their feedback). */
+  by?: 'coach';
 }
 
 /** A photo or video. The file itself is in `mediaBlobs` so lists stay light. */
@@ -166,6 +168,51 @@ export interface MediaItem {
   tracked?: { pattern: string; joint: string; reps: number; deepest?: number; spread?: number; down?: number; up?: number };
   /** A suggested movement pattern, waiting to be confirmed. */
   suggestion?: { pattern: string | null; confidence: number; from: 'movement' | 'log' | 'both' | null; why: string; options: string[]; reps?: number };
+  /** On a coach's device: the pairing of the athlete this clip belongs to (kept out of the coach's own lists). */
+  owner?: string;
+  /** On a coach's device: ids of the marks the athlete shared, so the coach's own can be told apart. */
+  sharedMarks?: string[];
+  /** The coach's comment: being written (coach's device) or received (athlete's device). */
+  coachComment?: { text: string; at: number; by?: string };
+}
+
+/** A pairing with your coach or an athlete, made by scanning a QR code. */
+export interface Pairing {
+  id: string;
+  /** Your side of it. */
+  role: 'athlete' | 'coach';
+  /** The shared secret (base64url), which opens files between the two devices. */
+  secret: string;
+  /** The other person's name. */
+  name: string;
+  created: number;
+  lastSent?: number;
+  lastReceived?: number;
+}
+
+/** A share received from an athlete (on the coach's device). */
+export interface CoachShare {
+  id: string;
+  pairId: string;
+  created: number;
+  received: number;
+  from: string;
+  message?: string;
+  period: { from: number | null; to: number };
+  itemIds: string[];
+  notes: Note[];
+  measurements: MeasurementEntry[];
+}
+
+/** Feedback received from the coach (on the athlete's device). */
+export interface CoachFeedback {
+  id: string;
+  pairId: string;
+  created: number;
+  received: number;
+  from: string;
+  message: string;
+  itemIds: string[];
 }
 
 export interface MediaBlob {
@@ -179,6 +226,9 @@ export class AtlasDB extends Dexie {
   activities!: Table<Activity, string>;
   settings!: Table<Setting, string>;
   measurements!: Table<MeasurementEntry, string>;
+  pairings!: Table<Pairing, string>;
+  shares!: Table<CoachShare, string>;
+  feedback!: Table<CoachFeedback, string>;
   media!: Table<MediaItem, string>;
   mediaBlobs!: Table<MediaBlob, string>;
   poses!: Table<PoseTrack, string>;
@@ -201,6 +251,7 @@ export class AtlasDB extends Dexie {
     this.version(4).stores({ media: 'id, date, purpose, pattern, pose, noteId, *tags', mediaBlobs: 'id' });
     // v5: joint positions found by the pose tracker, one track per photo or video
     this.version(5).stores({ poses: 'id' });
+    this.version(6).stores({ pairings: 'id', shares: 'id, pairId', feedback: 'id, pairId' });
   }
 }
 
