@@ -333,7 +333,12 @@ textarea.input { resize: vertical; min-height: 84px; line-height: 1.5; }
   border-radius: 999px;
   padding: 3px;
   gap: 2px;
+  /* scroll rather than overflow when the options don't fit (phones) */
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.seg::-webkit-scrollbar { display: none; }
 
 .seg button {
   border: 0;
@@ -1524,3 +1529,13 @@ ol.steps code, p code, li code { font-family: var(--mono); font-size: 12px; back
 .export-opts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; }
 @media (max-width: 620px) { .export-opts { grid-template-columns: minmax(0, 1fr); } }
 .quality-row .thumb-badge { display: none; }
+
+/* archive */
+.ok-text { color: #7ddc9a; }
+.label-list { display: flex; flex-direction: column; gap: 6px; }
+.label-row { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 10px; padding: 6px; min-width: 0; }
+.label-row .mthumb { width: 64px; flex: none; }
+.label-row select { max-width: 220px; flex: 1 1 auto; min-width: 0; }
+@media (max-width: 440px) {
+  .page-inner > .seg button { padding: 5px 8px; }
+}

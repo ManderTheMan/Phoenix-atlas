@@ -19,7 +19,7 @@ export interface Check {
   fix?: string;
 }
 
-type Item = Pick<MediaItem, 'kind' | 'purpose' | 'width' | 'height' | 'duration' | 'camera' | 'pose' | 'pattern'>;
+type Item = Pick<MediaItem, 'kind' | 'purpose' | 'width' | 'height' | 'duration' | 'camera' | 'pose' | 'pattern'> & Partial<Pick<MediaItem, 'original'>>;
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 const median = (a: number[]) => {
@@ -63,13 +63,15 @@ const VIEW_WORD: Record<CameraAngle, string> = { side: 'side-on', front: 'front-
 export function qualityChecks(item: Item, track: PoseTrack | null, previous?: PoseTrack | null): Check[] {
   const out: Check[] = [];
   const isVideo = item.kind === 'video';
-  const short = Math.min(item.width, item.height);
+  // archive clips are stored as small copies: judge the original
+  const w = item.original?.width ?? item.width, h = item.original?.height ?? item.height;
+  const short = Math.min(w, h);
   const need = isVideo ? [720, 480] : [1080, 720];
   out.push({
     id: 'resolution',
     label: 'Resolution',
     status: short >= need[0] ? 'pass' : short >= need[1] ? 'warn' : 'fail',
-    value: `${item.width}×${item.height}`,
+    value: `${w}×${h}${item.original ? ' (original)' : ''}`,
     why: 'Pose models look at a small copy of the person, so more pixels on the body help them place joints precisely, and higher resolution keeps the dataset useful for other models later.',
     fix: `Record at ${isVideo ? '1080p (or at least 720p)' : 'full resolution'} in your camera settings.`,
   });

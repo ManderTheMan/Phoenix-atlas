@@ -251,6 +251,14 @@ export function summarizeReps(track: PoseTrack, pattern?: string): RepSummary {
   return out;
 }
 
+const r1 = (x: number | undefined) => (x === undefined ? undefined : Math.round(x * 10) / 10);
+
+/** The compact summary stored on a media item (MediaItem.tracked). */
+export function trackSummary(track: PoseTrack, pattern: string): { pattern: string; joint: string; reps: number; deepest?: number; spread?: number; down?: number; up?: number } {
+  const s = summarizeReps(track, pattern);
+  return { pattern, joint: s.joint, reps: s.reps.length, deepest: r1(s.meanMin), spread: r1(s.sdMin), down: r1(s.meanDown), up: r1(s.meanUp) };
+}
+
 /** The frame nearest to a time. */
 export function frameAt(track: PoseTrack, t: number): PoseFrame | null {
   let best: PoseFrame | null = null;

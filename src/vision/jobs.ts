@@ -4,7 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { create } from 'zustand';
 import { db, type MediaItem } from '../db/db';
 import { getMediaBlob } from '../media/media';
-import type { PoseTrack } from './analysis';
+import { trackSummary, type PoseTrack } from './analysis';
 
 interface Job {
   done: number;
@@ -77,8 +77,31 @@ export function usePoseTrack(id: string | null | undefined): PoseTrack | null | 
   return useLiveQuery(async () => (id ? ((await db.poses.get(id)) ?? null) : null), [id]);
 }
 
-/** Every saved pose track (live), for lists and the dataset view. */
-export function usePoseTracks(): Map<string, PoseTrack> {
-  const all = useLiveQuery(() => db.poses.toArray(), [], [] as PoseTrack[]);
-  return new Map((all ?? []).map((t) => [t.id, t]));
+
+const noTrack = new Set<string>();
+
+/**
+ * Keeps each clip's reps-and-depth summary in step with its movement and joint track, a few clips at a
+ * time, so long lists (years of archive clips) never need every track in memory.
+ */
+export async function refreshSummaries(items: MediaItem[], limit = 25): Promise<number> {
+  const stale = items.filter((m) => m.kind === 'video' && m.pattern && m.tracked?.pattern !== m.pattern && !noTrack.has(m.id)).slice(0, limit);
+  let n = 0;
+  for (const m of stale) {
+    const t = await db.poses.get(m.id);
+    if (!t) {
+      noTrack.add(m.id);
+      continue;
+    }
+    await db.media.update(m.id, { tracked: trackSummary(t, m.pattern!) });
+    n++;
+  }
+  return n;
+}
+
+/** Saved pose tracks for some media items only. */
+export function usePoseTracksFor(ids: string[]): Map<string, PoseTrack> {
+  const key = ids.join(',');
+  const list = useLiveQuery(() => db.poses.bulkGet(ids), [key], [] as (PoseTrack | undefined)[]);
+  return new Map((list ?? []).filter((t): t is PoseTrack => !!t).map((t) => [t.id, t]));
 }

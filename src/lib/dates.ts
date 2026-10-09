@@ -37,6 +37,14 @@ export function formatShort(t: number): string {
   return new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
+/** "Mar 2 → Jun 9", with years when the two fall in different years (or not this year). */
+export function formatSpan(a: number, b: number): string {
+  const ya = new Date(a).getFullYear(), yb = new Date(b).getFullYear();
+  if (ya === yb && ya === new Date().getFullYear()) return `${formatShort(a)} → ${formatShort(b)}`;
+  const f = (t: number) => new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  return `${f(a)} → ${f(b)}`;
+}
+
 export function relativeDay(t: number, now = Date.now()): string {
   const days = Math.round((startOfDay(now) - startOfDay(t)) / DAY);
   if (days === 0) return 'Today';

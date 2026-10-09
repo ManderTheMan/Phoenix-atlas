@@ -5,10 +5,11 @@ import { useEffect, useMemo, useState } from 'react';
 import LineChart from '../components/charts/LineChart';
 import { Check, Empty, Seg } from '../components/common';
 import Icon from '../components/Icon';
+import ArchiveTab from '../components/media/ArchiveTab';
 import DatasetTab from '../components/media/DatasetTab';
 import MediaThumb from '../components/media/MediaThumb';
 import type { MediaItem, PoseId } from '../db/db';
-import { DAY, formatDate, formatShort } from '../lib/dates';
+import { DAY, formatDate, formatShort, formatSpan } from '../lib/dates';
 import {
   firstAndLatest,
   formatBytes,
@@ -27,6 +28,8 @@ import { useMediaUI, type MediaTab } from '../media/mediaUI';
 import { PATTERN_BY_ID, PATTERNS, type PatternId } from '../movement/patterns';
 import { formatMeasure, MEASURE_BY_KEY, measureLabel, useBody } from '../profile/profile';
 import { useUI } from '../state/ui';
+import { JOINTS, type JointId } from '../vision/analysis';
+import { refreshSummaries } from '../vision/jobs';
 
 type Filter = 'all' | 'photo' | 'video' | 'progress' | 'form' | 'other';
 
@@ -101,6 +104,7 @@ export default function MediaPage() {
             { value: 'body', label: <><Icon name="user" size={15} /> Body</> },
             { value: 'form', label: <><Icon name="movement" size={15} /> Form</> },
             { value: 'all', label: <><Icon name="image" size={15} /> All</> },
+            { value: 'archive', label: <><Icon name="film" size={15} /> Archive</> },
             { value: 'dataset', label: <><Icon name="share" size={15} /> Dataset</> },
           ]}
         />
@@ -113,6 +117,8 @@ export default function MediaPage() {
           <BodyTab media={media} entries={entries} units={profile.units} onTake={takePhotos} />
         ) : tab === 'form' ? (
           <FormTab media={media} pattern={pattern} setPattern={setPattern} onRecord={recordForm} units={profile.units} onMovement={(p) => ui.openMovement(p)} />
+        ) : tab === 'archive' ? (
+          <ArchiveTab media={media} />
         ) : tab === 'dataset' ? (
           <DatasetTab media={media} />
         ) : (
@@ -215,7 +221,7 @@ function BodyTab({ media, entries, units, onTake }: { media: MediaItem[]; entrie
                 <h3>{pose.label}</h3>
                 <span className="tiny muted">
                   {series.length} photo{series.length === 1 ? '' : 's'}
-                  {series.length > 1 ? ` · ${formatShort(series[0].date)} → ${formatShort(series[series.length - 1].date)}` : ''}
+                  {series.length > 1 ? ` · ${formatSpan(series[0].date, series[series.length - 1].date)}` : ''}
                 </span>
               </div>
               <div className="row wrap">
@@ -283,8 +289,18 @@ function FormTab({
   // default to the movement filmed most recently
   const current = pattern !== null && (counts.has(pattern) || PATTERN_BY_ID.has(pattern as PatternId)) ? pattern : (form[form.length - 1]?.pattern ?? '');
   const def = current ? PATTERN_BY_ID.get(current as PatternId) : undefined;
-  const series = form.filter((m) => (m.pattern ?? '') === current);
-  const trends = useMemo(() => markTrends(series), [series]);
+  const series = useMemo(() => form.filter((m) => (m.pattern ?? '') === current), [form, current]);
+  // keep each clip's tracked reps and depth up to date (a few at a time), then chart the depth over time
+  useEffect(() => {
+    void refreshSummaries(series);
+  }, [series]);
+  const trends = useMemo(() => {
+    const marked = markTrends(series);
+    const pts = series.filter((m) => m.tracked?.pattern === current && m.tracked.deepest !== undefined).map((m) => ({ x: m.date, y: m.tracked!.deepest!, id: m.id }));
+    const joint = series.find((m) => m.tracked?.pattern === current)?.tracked?.joint as JointId | undefined;
+    if (pts.length < 2 || !joint) return marked;
+    return [{ key: 'tracked', label: `Deepest ${JOINTS[joint].label.toLowerCase()} (tracked)`, type: 'angle' as const, unit: '°' as const, points: pts }, ...marked];
+  }, [series, current]);
   const videos = series.filter((m) => m.kind === 'video');
   const pair = firstAndLatest(videos.length >= 2 ? videos : series.filter((m) => m.kind === 'photo'));
   const ids = [...series].reverse().map((m) => m.id);
@@ -340,7 +356,7 @@ function FormTab({
             <h3>{def?.name ?? 'Movement not set'}</h3>
             <span className="tiny muted">
               {series.length} clip{series.length === 1 ? '' : 's'}
-              {series.length > 1 ? ` · ${formatShort(series[0].date)} → ${formatShort(series[series.length - 1].date)}` : ''}
+              {series.length > 1 ? ` · ${formatSpan(series[0].date, series[series.length - 1].date)}` : ''}
             </span>
           </div>
           <div className="row wrap">
@@ -397,6 +413,7 @@ function FormTab({
           <div className="clip-list">
             {[...series].reverse().map((m) => {
               const variant = def?.variants.find((v) => v.value === m.variant);
+              const tr = m.tracked?.pattern === m.pattern ? m.tracked : undefined;
               return (
                 <div key={m.id} className="clip">
                   <MediaThumb item={m} onClick={() => mui.openViewer(m.id, ids)} />
@@ -420,7 +437,13 @@ function FormTab({
                       </div>
                     )}
                     {m.notes && <p className="tiny dim ellipsis">{m.notes}</p>}
-                    {!m.marks?.length && m.kind === 'video' && <p className="tiny muted">Open to slow it down and measure.</p>}
+                    {tr && tr.reps > 0 && (
+                      <p className="tiny dim">
+                        Deepest {JOINTS[tr.joint as JointId]?.label.toLowerCase() ?? tr.joint} {Math.round(tr.deepest ?? 0)}° · {tr.reps} rep{tr.reps === 1 ? '' : 's'}
+                        {tr.down !== undefined && tr.up !== undefined ? ` · ${tr.down.toFixed(1)} s down, ${tr.up.toFixed(1)} s up` : ''}
+                      </p>
+                    )}
+                    {!m.marks?.length && !tr?.reps && m.kind === 'video' && <p className="tiny muted">Open to slow it down and measure.</p>}
                   </div>
                 </div>
               );

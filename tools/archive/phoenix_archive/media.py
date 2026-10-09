@@ -54,7 +54,9 @@ class Info:
 
     @property
     def slowmo(self) -> bool:
-        return bool((self.capture_fps and self.fps and self.capture_fps > self.fps * 1.5) or (self.fps and self.fps >= 100))
+        """Slow motion stored stretched out: filmed at a higher rate than the file plays at, so time in the
+        file runs slower than real time. (High-frame-rate files with real-time timestamps aren't affected.)"""
+        return bool(self.capture_fps and self.fps and self.capture_fps > self.fps * 1.5)
 
 
 def probe(path: str, timeout: float = 120) -> Info:
@@ -100,8 +102,12 @@ def probe(path: str, timeout: float = 120) -> Info:
         duration = 0.0
     if duration <= 0:
         duration = _tag_duration(tags.get("duration")) or measure_duration(path)
-    fps = _rate(video.get("avg_frame_rate")) or _rate(video.get("r_frame_rate"))
-    if fps and fps > 1000:  # nonsense from some containers
+    fps = _rate(video.get("avg_frame_rate"))
+    if (not fps or fps > 1000) and duration > 0:
+        # browser recordings and some WebM/MKV files leave the average out (r_frame_rate is then only a
+        # timebase guess, such as 120): count the frames instead, which reads packets without decoding
+        fps = count_frames(path) / duration or None
+    if not fps:
         fps = _rate(video.get("r_frame_rate"))
     capture = None
     for key in ("com.android.capture.fps", "com.apple.quicktime.capture.fps"):
@@ -123,6 +129,15 @@ def _tag_duration(v: str | None) -> float:
         return int(h) * 3600 + int(m) * 60 + float(sec)
     except ValueError:
         return 0.0
+
+
+def count_frames(path: str, timeout: float = 600) -> int:
+    try:
+        r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-count_packets", "-show_entries", "stream=nb_read_packets",
+                            "-of", "csv=p=0", path], capture_output=True, timeout=timeout, check=False, **_DETACH)
+        return int(r.stdout.decode().strip().split(",")[0] or 0)
+    except (subprocess.TimeoutExpired, ValueError):
+        return 0
 
 
 def measure_duration(path: str, timeout: float = 600) -> float:
@@ -206,13 +221,18 @@ def run_ffmpeg(args: list[str], timeout: float) -> None:
 
 
 def make_proxy(src: str, dst: str, info: Info, short_edge: int, timeout: float) -> tuple[int, int]:
-    """A small H.264 copy without sound or metadata (no location, no device details), upright, at most 30 fps."""
+    """A small copy without sound or metadata (no location, no device details), upright, at most 30 fps.
+    H.264 in MP4 plays in every mainstream browser; VP9 in WebM (dst ending .webm) suits open-source builds."""
     w, h = fit_short(info.width, info.height, short_edge)
     vf = f"scale={w}:{h}"
     if info.fps and info.fps > 31:
         vf += ",fps=30"
+    if dst.endswith(".webm"):
+        codec = ["-c:v", "libvpx-vp9", "-crf", "36", "-b:v", "0", "-deadline", "realtime", "-cpu-used", "8", "-row-mt", "1"]
+    else:
+        codec = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "28", "-movflags", "+faststart"]
     run_ffmpeg(["-i", src, "-map", "0:v:0", "-an", "-sn", "-dn", "-map_metadata", "-1", "-map_chapters", "-1", "-vf", vf,
-                "-c:v", "libx264", "-preset", "veryfast", "-crf", "28", "-pix_fmt", "yuv420p", "-movflags", "+faststart", dst], timeout)
+                *codec, "-pix_fmt", "yuv420p", dst], timeout)
     return w, h
 
 

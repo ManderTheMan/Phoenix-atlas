@@ -137,7 +137,7 @@ A clip's id is the start of its SHA-256 fingerprint. The same video found in two
 phoenix-archive pack --out "D:\phoenix-archive"
 ```
 
-This writes zips of up to 2 GB to `D:\phoenix-archive\packs`, holding usable clips without the near-duplicate copies. In the app, open **Media → Dataset → Import archive** and choose them. To make zips by period instead, add `--since 2019 --until 2019`.
+This writes zips of up to 2 GB to `D:\phoenix-archive\packs`, holding usable clips without the near-duplicate copies. In the app, open **Media → Archive**, choose **Choose pack files** and pick them. On the computer that holds the archive you can choose the archive folder itself instead. To make zips by period instead, add `--since 2019 --until 2019`.
 
 **Tracking only:** `pack --tracks-only` leaves the small copies out, so you get joints, thumbnails and the index only. Even years of clips come to tens of MB. That's small enough to send for analysis or to share without any video.
 
@@ -161,7 +161,7 @@ The index records which one was used (`dateSource`). Copies lend each other thei
 - **Near-duplicates** are the same footage re-saved, re-encoded, shrunk or rotated by another app. The tool spots them by matching length, frames and joint positions all the way through. The best copy keeps its place, and the others get `nearDuplicateOf` and are left out of packs.
 - The test is deliberately strict. On test clips, copies stayed within 0.4% of the frame in joint position. Two different sets of the same squat filmed identically were 1.4% or more apart, and are kept apart. Missing a copy only costs a little space, while merging two sets would hide one.
 
-**Slow motion** is marked (`slowmo`). Some phones store slow motion stretched out, which stretches rep timings too.
+**Slow motion** stored stretched out (the phone notes it filmed faster than the file plays) is marked `slowmo`, because time in those files runs slower than real time and stretches rep timings. High-frame-rate files that keep real time aren't affected.
 
 ## Matching the app
 

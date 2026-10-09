@@ -156,7 +156,14 @@ export interface MediaItem {
   align?: { x: number; y: number; s: number };
   /** Kept out of coach reports. */
   private?: boolean;
+  /** Where it came from; "archive:<id>" for clips brought in from the archive tool. */
   source?: string;
+  /** The original file of an archive clip (the stored file is a small copy). */
+  original?: { archiveId: string; name: string; width: number; height: number; bytes: number; fps?: number; codec?: string; dateSource: string; copies?: number; slowmo?: boolean };
+  /** Reps and depth from the joint track for the clip's movement, kept so lists needn't load tracks. */
+  tracked?: { pattern: string; joint: string; reps: number; deepest?: number; spread?: number; down?: number; up?: number };
+  /** A suggested movement pattern, waiting to be confirmed. */
+  suggestion?: { pattern: string | null; confidence: number; from: 'movement' | 'log' | 'both' | null; why: string; options: string[]; reps?: number };
 }
 
 export interface MediaBlob {

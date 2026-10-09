@@ -19,7 +19,7 @@ export interface CameraRequest {
   upload?: boolean;
 }
 
-export type MediaTab = 'body' | 'form' | 'all' | 'dataset';
+export type MediaTab = 'body' | 'form' | 'all' | 'archive' | 'dataset';
 
 interface MediaUIState {
   /** Tab (and movement) the Media page shows when it next opens. */

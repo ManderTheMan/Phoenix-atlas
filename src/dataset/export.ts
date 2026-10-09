@@ -40,7 +40,8 @@ export interface ExportReport {
 /** The files an export would include, before privacy steps (for the preview). */
 export async function exportCandidates(o: Pick<ExportOptions, 'purposes' | 'includeSynthetic'>): Promise<MediaItem[]> {
   const all = await db.media.toArray();
-  return all.filter((m) => !m.private && o.purposes.includes(m.purpose) && (o.includeSynthetic || !m.tags.includes('synthetic'))).sort((a, b) => a.date - b.date);
+  // clips from the video archive aren't exported yet (they stay in the Archive tab)
+  return all.filter((m) => !m.private && !m.source?.startsWith('archive:') && o.purposes.includes(m.purpose) && (o.includeSynthetic || !m.tags.includes('synthetic'))).sort((a, b) => a.date - b.date);
 }
 
 export async function exportDataset(o: ExportOptions, onProgress?: (text: string, p: number) => void): Promise<{ blob: Blob; report: ExportReport }> {

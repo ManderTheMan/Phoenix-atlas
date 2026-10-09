@@ -39,6 +39,7 @@ class Options:
     tmp: str
     fps: float | None = None
     proxy_short: int = 480
+    proxy_format: str = "mp4"
     min_size: float = MIN_SIZE
 
 
@@ -259,8 +260,9 @@ def _process(src: Source, path: str, cid: str, clip_dir: Path) -> dict:
     row["frames"] = len(t["frames"])
     row["tracked"] = round(len(seen) / len(t["frames"]), 3) if t["frames"] else 0
     if _opts.proxy_short:
-        w, h = make_proxy(path, str(clip_dir / "proxy.mp4"), info, _opts.proxy_short, timeout=max(600.0, info.duration * 10))
-        row["proxy"] = "proxy.mp4"
+        name = f"proxy.{_opts.proxy_format}"
+        w, h = make_proxy(path, str(clip_dir / name), info, _opts.proxy_short, timeout=max(600.0, info.duration * 10))
+        row["proxy"] = name
         row["proxyWidth"], row["proxyHeight"] = w, h
-        row["proxyBytes"] = (clip_dir / "proxy.mp4").stat().st_size
+        row["proxyBytes"] = (clip_dir / name).stat().st_size
     return row

@@ -95,7 +95,7 @@ def cmd_run(a: argparse.Namespace) -> None:
         clean_claims(out)
         tmp = Path(a.tmp).expanduser() if a.tmp else out / "tmp"
         shutil.rmtree(tmp, ignore_errors=True)
-        opts = Options(out=str(out), model=model, tmp=str(tmp), fps=a.fps, proxy_short=a.proxy, min_size=a.min_size)
+        opts = Options(out=str(out), model=model, tmp=str(tmp), fps=a.fps, proxy_short=a.proxy, proxy_format=a.proxy_format, min_size=a.min_size)
         workers = a.workers or max(1, (os.cpu_count() or 2) // 2)
         print(f"Working with {workers} worker{'s' if workers > 1 else ''}. Press Ctrl+C to stop; run the same command again to carry on.\n", flush=True)
         _run_pool(todo, opts, workers, state, todo_bytes)
@@ -190,7 +190,7 @@ def cmd_pack(a: argparse.Namespace) -> None:
     paths = pack(out, dest, a.since, a.until, a.tracks_only, a.include_copies, a.max_gb)
     for p in paths:
         print(f"{p}  ({_gb(p.stat().st_size)})")
-    print("Import these in Phoenix Atlas: Media → Dataset → Import archive.")
+    print("Import these in Phoenix Atlas: Media → Archive → Choose pack files.")
 
 
 def cmd_merge(a: argparse.Namespace) -> None:
@@ -217,6 +217,8 @@ def main(argv: list[str] | None = None) -> None:
     r.add_argument("--limit", type=int, help="stop after this many videos (to try it out)")
     r.add_argument("--fps", type=float, help="frames tracked per second (default 15, or 10 for clips over 45 s, like the app)")
     r.add_argument("--proxy", type=int, default=480, help="height of the small copy's shorter side; 0 for none (default 480)")
+    r.add_argument("--proxy-format", choices=["mp4", "webm"], default="mp4",
+                   help="mp4 (H.264, plays everywhere; default) or webm (VP9, for open-source browsers such as Chromium on Linux)")
     r.add_argument("--min-size", type=float, default=MIN_SIZE, help=f"skip people smaller than this share of the frame height (default {MIN_SIZE})")
     r.add_argument("--model", help="path to pose_landmarker_full.task (downloaded automatically otherwise)")
     r.add_argument("--tmp", help="where to unpack videos from zips (default: inside --out)")

@@ -12,7 +12,7 @@ import { useMediaUI } from '../../media/mediaUI';
 import { PATTERN_BY_ID, type PatternId } from '../../movement/patterns';
 import { useProfile } from '../../profile/profile';
 import { useUI } from '../../state/ui';
-import { useVisionJobs, usePoseTracks } from '../../vision/jobs';
+import { usePoseTracksFor, useVisionJobs } from '../../vision/jobs';
 import { qualityChecks, qualitySummary } from '../../vision/quality';
 import type { TrackerTest } from '../../vision/validate';
 import { Check, Seg } from '../common';
@@ -35,9 +35,11 @@ export default function DatasetTab({ media }: { media: MediaItem[] }) {
   const mui = useMediaUI();
   const ui = useUI();
   const profile = useProfile();
-  const tracks = usePoseTracks();
   const jobs = useVisionJobs();
-  const usable = media.filter((m) => !m.private);
+  // archive clips (possibly years of them) stay in the Archive tab for now
+  const usable = useMemo(() => media.filter((m) => !m.private && !m.source?.startsWith('archive:')), [media]);
+  const archiveCount = media.length - media.filter((m) => !m.source?.startsWith('archive:')).length;
+  const tracks = usePoseTracksFor(usable.map((m) => m.id));
 
   // ---------------------------------------------------------------- shot list
   const shot = useMemo(() => {
@@ -159,6 +161,7 @@ export default function DatasetTab({ media }: { media: MediaItem[] }) {
           tracker, then export.
         </p>
         <p className="tiny muted">Private files are never exported. Publishing your body photos is permanent once others have copies: export a draft first and look through it.</p>
+        {archiveCount > 0 && <p className="tiny muted">The {archiveCount} clips brought in from your video archive aren’t included here yet.</p>}
       </div>
 
       <div className="card col">

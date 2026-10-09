@@ -81,6 +81,7 @@ The demo photos are renders of the 3D body fitted to the demo measurements, and 
 - **Capture-quality checks.** Each photo and video is checked for resolution, frame rate, framing, body size, camera angle, steadiness, joint confidence, lighting and sharpness, with why each matters and what to change next time.
 - **Test the tracker.** The 3D body is posed by the squat model, filmed side-on and tracked; because its true joint angles are known, you see the tracker's error and bias.
 - **Build a public dataset.** The Dataset tab walks you through a shot list, checks every file, and exports a ZIP with the media, metadata, pose and measurement annotations, rep timings, quality checks, a dataset card, a datasheet and a license. Faces can be pixelated, dates coarsened, and location metadata is removed from every file (on import as well).
+- **Your video archive.** The [archive tool](tools/archive/README.md) runs on a laptop or home server over years of footage, Google Takeout zips included. It finds the clips with you training, tracks the joints with the same model, and makes small copies. In **Media → Archive** you bring its packs in. Each clip comes with a suggested movement (from how the joints move, checked against your training log), a quick screen confirms them in bulk, and the Form tab charts tracked depth and tempo over the years.
 - **[The dataset guide](docs/dataset/README.md)** teaches how the computer vision works, how to set up and film, what to capture, how to check and annotate it, how accurate the tracker is, and how to publish.
 
 **Notes**
@@ -187,8 +188,10 @@ npm run build      # type-checks and builds to dist/
 | `src/profile/` | Profile and measurement storage. |
 | `src/media/` | Photo and video storage, the geometry of angle, lean and path measurements, photo and video processing (EXIF and MP4 dates, thumbnails, stills), and the demo media. |
 | `src/components/media/` | The camera, the viewer with its measuring tools, joint tracking and quality panels, the comparison and time-lapse screens, and the Dataset tab. |
-| `src/vision/` | Pose tracking (MediaPipe runner and job queue), joint angles, rep detection, quality checks, and the tracker test. |
+| `src/vision/` | Pose tracking (MediaPipe runner and job queue), joint angles, rep detection, guessing the movement, quality checks, and the tracker test. |
 | `src/dataset/` | Dataset export: ids, metadata, dataset card, datasheet, face pixelation. |
+| `src/media/archive.ts` | Reading the archive tool's packs and folders, and bringing clips in with their tracks and suggestions. |
+| `tools/archive/` | The archive tool (Python): finds, sorts and tracks videos in folders and Takeout zips, with its own guide and tests. |
 | `scripts/vision-assets.mjs` | Copies the pose-tracking WebAssembly runtime into `public/vision/` and downloads the pinned model (checked by SHA-256). Runs before `dev` and `build`. |
 | `scripts/build-landmarks.ts` | Measures the reference body (joint centres, segment lengths and girths) into `src/anatomy/landmarks.json`. |
 | `scripts/build-atlas.ts` | Builds `public/atlas/*.bin` and `catalog.json` from the anatomical dataset. |
