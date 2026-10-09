@@ -7,3 +7,9 @@ coverage
 *.tsbuildinfo
 .cache
 public/vision/
+
+# archive tool (Python)
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.venv/
