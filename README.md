@@ -26,13 +26,14 @@ The demo photos are renders of the 3D body fitted to the demo measurements, and 
 ## Features
 
 **3D atlas**
-- An anatomical model of **2,705 named structures** built from [Z-Anatomy](https://github.com/Z-Anatomy/Models-of-human-anatomy), whose models are based on BodyParts3D (segmented from real scan data). It has six layers:
+- An anatomical model of **2,692 named structures** built from [Z-Anatomy](https://github.com/Z-Anatomy/Models-of-human-anatomy), whose models are based on BodyParts3D (segmented from real scan data). It has six layers:
   - **Surface**: 250 skin regions (anterior region of thigh, popliteal fossa, lumbar region…).
   - **Muscular**: 497 muscles, muscle heads and key fasciae, split into superficial and deep sets.
   - **Skeletal**: every bone, plus ligaments, cartilages, intervertebral discs and menisci.
   - **Nerves**: brain, spinal cord, cranial nerves, plexuses and peripheral nerves down to the digital branches.
-  - **Vessels**: 659 arteries and veins.
+  - **Vessels**: 653 arteries and veins.
   - **Organs**: heart chambers and valves, lungs by lobe, digestive and urinary organs, glands and lymph nodes.
+  - The body is shown without external genitalia, with a smooth groin like a mannequin's.
 - Every structure shows its English and Latin (Terminologia Anatomica) name. Commonly logged muscles also show what they do and which nerve supplies them.
 - Search understands everyday words, so "hamstring", "IT band" or "achilles" find the right structures.
 - Turn layers on and off and set each layer's opacity. Layers load on demand, and each draws in a single call, so the full model runs on a phone. A layer below 35% opacity becomes a "ghost": you can still see it, but taps go through to whatever is underneath.
@@ -81,7 +82,7 @@ The demo photos are renders of the 3D body fitted to the demo measurements, and 
 - **Capture-quality checks.** Each photo and video is checked for resolution, frame rate, framing, body size, camera angle, steadiness, joint confidence, lighting and sharpness, with why each matters and what to change next time.
 - **Test the tracker.** The 3D body is posed by the squat model, filmed side-on and tracked; because its true joint angles are known, you see the tracker's error and bias.
 - **Build a public dataset.** The Dataset tab walks you through a shot list, checks every file, and exports a ZIP with the media, metadata, pose and measurement annotations, rep timings, quality checks, a dataset card, a datasheet and a license. Faces can be pixelated, dates coarsened, and location metadata is removed from every file (on import as well).
-- **Your video archive.** The [archive tool](tools/archive/README.md) runs on a laptop or home server over years of footage, Google Takeout zips included. It finds the clips with you training, tracks the joints with the same model, and makes small copies. In **Media → Archive** you bring its packs in. Each clip comes with a suggested movement (from how the joints move, checked against your training log), a quick screen confirms them in bulk, and the Form tab charts tracked depth and tempo over the years.
+- **Your video archive.** The [archive tool](tools/archive/README.md) runs on a laptop or home server over years of footage, Google Takeout zips included. It finds the clips (and, if you like, photos) with you training, tracks the joints with the same model, and makes small copies. It can also keep their full metadata, draw contact sheets to label from, and collect the originals into one folder. [docs/local-session/GATHER_MEDIA.md](docs/local-session/GATHER_MEDIA.md) is a step-by-step plan for a Claude Code session on your own computer to do all of it. In **Media → Archive** you bring its packs in. Each clip comes with a suggested movement (from how the joints move, checked against your training log), a quick screen confirms them in bulk, and the Form tab charts tracked depth and tempo over the years.
 - **[The dataset guide](docs/dataset/README.md)** teaches how the computer vision works, how to set up and film, what to capture, how to check and annotate it, how accurate the tracker is, and how to publish.
 
 **Notes**
