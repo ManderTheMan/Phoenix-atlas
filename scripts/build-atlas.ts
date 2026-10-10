@@ -15,6 +15,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { encodeLayer } from '../src/anatomy/atlasFile';
 import { meshFromShape } from '../src/anatomy/mc';
+import { cover, inFront, INTERIOR, REPLACED, splitByX, SURFACE, type HeightField } from '../src/anatomy/patch';
 import { displace, ellipsoid, intersect, subtract, union, type Shape } from '../src/anatomy/sdf';
 import type { LayerId } from '../src/anatomy/types';
 
@@ -72,8 +73,42 @@ const KEEP_FASCIAE =
 const DROP_JOINT = /capsule|synovial|intercostal membrane|fat pad|frenula|membrane of larynx|thyrohyoid membrane|fibro-elastic/i;
 const KIDNEY_INSIDE = /^visceral\.(renal_cortex|renal_pyramids|renal_papillae|renal_columns|hilum_of_kidney|major_calices|minor_calices)_/;
 
+// The reference body is shown without external genitalia (see "groin" below):
+// these structures are left out, and those that only pass through are trimmed.
+const GENITAL = new Set([
+  'visceral.corpus_cavernosum_of_penis',
+  'visceral.corpus_spongiosum_of_penis',
+  'visceral.glans_penis',
+  'visceral.testis_l',
+  'visceral.testis_r',
+  'visceral.epididymis_l',
+  'visceral.epididymis_r',
+  'cardiovascular.deep_artery_of_penis_l',
+  'cardiovascular.deep_artery_of_penis_r',
+  'cardiovascular.dorsal_artery_of_penis_l',
+  'cardiovascular.dorsal_artery_of_penis_r',
+  'cardiovascular.deep_dorsal_vein_of_penis',
+  'cardiovascular.superficial_dorsal_veins_of_penis',
+]);
+const TRIM = new Set([
+  'visceral.ductus_deferens_l',
+  'visceral.ductus_deferens_r',
+  'visceral.urethra',
+  'cardiovascular.left_testicular_artery',
+  'cardiovascular.right_testicular_artery_r',
+  'cardiovascular.left_testicular_vein',
+  'cardiovascular.right_testicular_vein',
+  'cardiovascular.superficial_external_pudendal_artery_l',
+  'cardiovascular.superficial_external_pudendal_artery_r',
+  'cardiovascular.external_pudendal_veins_l',
+  'cardiovascular.external_pudendal_veins_r',
+  'nervous.genital_branch_of_genitofemoral_nerve_l',
+  'nervous.genital_branch_of_genitofemoral_nerve_r',
+]);
+
 function select(s: MStruct): Pick | null {
   if (s.kind !== 'structure' || !s.meshes?.length) return null;
+  if (GENITAL.has(s.id)) return null;
   const path = ancestors(s).map((a) => a.id);
   const has = (frag: string) => path.some((p) => p.includes(frag));
   const name = nameOf(s.id);
@@ -294,14 +329,8 @@ function signedVolume(p: number[], idx: number[]): number {
   return v / 6;
 }
 
-const built: Built[] = [];
-const dropped: Record<string, number> = {};
-for (const s of manifest.structures) {
-  const pick = select(s);
-  if (!pick) {
-    if (s.kind === 'structure' && s.meshes?.length) dropped[s.system] = (dropped[s.system] ?? 0) + 1;
-    continue;
-  }
+/** A structure's raw meshes merged into one, facing outwards. */
+function assemble(s: MStruct): { P: number[]; M: number[]; I: number[] } {
   const P: number[] = [], M: number[] = [], I: number[] = [];
   for (const mi of s.meshes!) {
     const r = raw.get(mi);
@@ -317,6 +346,88 @@ for (const s of manifest.structures) {
       I.push(r.indices[t + (flip ? 1 : 2)] + base);
     }
   }
+  return { P, M, I };
+}
+
+// ------------------------------------------------------------------ groin
+
+// The skin's urogenital region holds the external genitalia. It is replaced by a
+// smooth patch over the opening it leaves (src/anatomy/patch.ts), seen first from
+// in front and below, then from below for the strip running back between the
+// thighs; muscle and bone tell the opening into the body from the gaps around it.
+const UROGENITAL = ['regions.urogenital_region_l', 'regions.urogenital_region_r'];
+const override = new Map<string, { P: number[]; M: number[]; I: number[] }>();
+let groin: HeightField[] = [];
+{
+  const near = (p: number[], i: number) => Math.abs(p[i]) < 0.12 && p[i + 1] > 0.6 && p[i + 1] < 1.0;
+  const tris: number[] = [], kind: number[] = [];
+  const counts = new Map<number, number>();
+  for (const s of manifest.structures) {
+    if (s.kind !== 'structure' || !s.meshes?.length) continue;
+    const what = UROGENITAL.includes(s.id) ? REPLACED : s.system === 'regions' ? (select(s) ? SURFACE : -1) : s.system === 'muscular' || s.system === 'skeletal' ? (GENITAL.has(s.id) ? -1 : INTERIOR) : -1;
+    if (what < 0) continue;
+    for (const mi of s.meshes) {
+      const r = raw.get(mi);
+      if (!r) continue;
+      for (let t = 0; t < r.indices.length; t += 3) {
+        const v = [r.indices[t] * 3, r.indices[t + 1] * 3, r.indices[t + 2] * 3];
+        if (!v.some((i) => near(r.positions, i))) continue;
+        // the patch takes the colour of the skin around it (the genital skin is darker),
+        // counted on its outer face: the inner face of each skin shell has its own colour
+        const m = r.materials[r.indices[t]];
+        if (what === SURFACE && !/-in$/.test(manifest.materials[m]?.key ?? '')) counts.set(m, (counts.get(m) ?? 0) + 1);
+        for (const i of v) tris.push(r.positions[i], r.positions[i + 1], r.positions[i + 2]);
+        kind.push(what);
+      }
+    }
+  }
+  const view = (deg: number) => ({
+    toward: [0, -Math.sin((deg * Math.PI) / 180), Math.cos((deg * Math.PI) / 180)] as [number, number, number],
+    across: [1, 0, 0] as [number, number, number],
+    cell: 0.001,
+    u: [-0.08, 0.08] as [number, number],
+    v: [-0.3, 0.9] as [number, number],
+  });
+  const { surface, fields } = cover(tris, kind, [view(45), view(90)], { bulge: 0.003, grow: 5, jump: 0.004 });
+  if (!surface.indices.length) throw new Error('groin: found no opening to cover');
+  groin = fields;
+  const skinMat = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+  const halves = splitByX(surface);
+  UROGENITAL.forEach((id, n) => override.set(id, { P: halves[n].positions, M: new Array(halves[n].positions.length / 3).fill(skinMat), I: halves[n].indices }));
+  console.log(`groin: covered with ${surface.indices.length / 3} triangles from ${fields.length} views, coloured ${manifest.materials[skinMat]?.key}`);
+}
+
+/** Whether a point lies outside the smoothed groin, where the external genitalia were. */
+const outsideGroin = (x: number, y: number, z: number) => groin.some((f) => inFront(f, [x, y, z], 0.001));
+
+/** Drops the triangles of a passing structure that lie where the external genitalia were. */
+function trim(g: { P: number[]; M: number[]; I: number[] }) {
+  const I: number[] = [];
+  for (let t = 0; t < g.I.length; t += 3) {
+    const [a, b, c] = [g.I[t], g.I[t + 1], g.I[t + 2]];
+    const cx = (g.P[a * 3] + g.P[b * 3] + g.P[c * 3]) / 3, cy = (g.P[a * 3 + 1] + g.P[b * 3 + 1] + g.P[c * 3 + 1]) / 3, cz = (g.P[a * 3 + 2] + g.P[b * 3 + 2] + g.P[c * 3 + 2]) / 3;
+    if (!outsideGroin(cx, cy, cz)) I.push(a, b, c);
+  }
+  return { ...g, I };
+}
+
+let trimmed = 0;
+const outside: string[] = []; // structures (other than those trimmed) reaching past the smoothed groin
+const built: Built[] = [];
+const dropped: Record<string, number> = {};
+for (const s of manifest.structures) {
+  const pick = select(s);
+  if (!pick) {
+    if (s.kind === 'structure' && s.meshes?.length) dropped[s.system] = (dropped[s.system] ?? 0) + 1;
+    continue;
+  }
+  let g0 = override.get(s.id) ?? assemble(s);
+  if (TRIM.has(s.id)) {
+    const before = g0.I.length;
+    g0 = trim(g0);
+    trimmed += (before - g0.I.length) / 3;
+  } else if (pick.layer !== 'skin' && trim(g0).I.length < g0.I.length) outside.push(s.id);
+  const { P, M, I } = g0;
   if (!I.length) continue;
   const g = prepare(P, M, I, ERROR[pick.layer]);
   if (!g.indices.length) continue;
@@ -332,6 +443,8 @@ for (const s of manifest.structures) {
   });
 }
 console.log('dropped per system', dropped);
+console.log(`groin: cut ${trimmed} triangles from structures passing through it`);
+if (outside.length) console.log('reaching past the smoothed groin (not trimmed):', outside.join(', '));
 
 // ------------------------------------------------------------------ muscle depth
 
