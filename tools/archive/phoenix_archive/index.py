@@ -16,8 +16,10 @@ from . import VERSION
 from .pose import MODEL_ID, MODEL_SHA256
 from .state import State
 
-CSV_COLUMNS = ["id", "status", "reason", "date", "dateSource", "name", "rel", "copies", "duration", "width", "height", "fps", "slowmo",
-               "codec", "bytes", "people", "bodySize", "view", "movement", "tracked", "proxyBytes", "nearDuplicateOf"]
+CSV_COLUMNS = ["id", "kind", "status", "reason", "date", "dateSource", "name", "rel", "copies", "duration", "width", "height", "fps", "slowmo",
+               "codec", "bytes", "people", "bodySize", "view", "movement", "tracked", "proxyBytes", "nearDuplicateOf",
+               "keep", "purpose", "pattern", "variant", "pose", "note", "device", "lat", "lon"]
+LABEL_FIELDS = ("keep", "purpose", "pattern", "variant", "pose", "note")
 
 
 def load_clips(out: Path) -> list[dict]:
@@ -62,25 +64,44 @@ def same_footage(a: dict, b: dict) -> bool:
     return sum(d) / n <= 0.02 and max(d) <= 0.05
 
 
+def same_photo(a: dict, b: dict) -> bool:
+    """The same picture saved again (resized, recompressed, shared through a messenger): near-identical
+    fingerprints and, when someone is in it, joints in the same places. Two shots of a burst differ more."""
+    sa, sb = a.get("sig") or [], b.get("sig") or []
+    if len(sa) != 1 or len(sb) != 1 or _hamming(sa[0], sb[0]) / 256 > 0.03:
+        return False
+    if abs((a.get("width") or 1) / (a.get("height") or 1) - (b.get("width") or 1) / (b.get("height") or 1)) > 0.02:
+        return False
+    pa, pb = (a.get("psig") or [None])[0], (b.get("psig") or [None])[0]
+    if pa and pb:
+        return sum(abs(x - y) for x, y in zip(pa, pb, strict=False)) / len(pa) / 1000 <= 0.004
+    return not pa and not pb
+
+
 def mark_near_duplicates(rows: list[dict]) -> None:
     """The best copy keeps its place; other copies of the same footage point to it."""
     for r in rows:
         r.pop("nearDuplicateOf", None)
     buckets: dict[int, list[dict]] = defaultdict(list)
+    photos: dict[str, list[dict]] = defaultdict(list)
     for r in rows:
-        if r.get("sig") and r.get("duration"):
+        if r.get("kind") == "photo":
+            if r.get("sig"):
+                photos[r["sig"][0][:2]].append(r)  # copies share their fingerprint's first bits almost always
+        elif r.get("sig") and r.get("duration"):
             buckets[int(r["duration"])].append(r)
 
     def quality(r: dict) -> tuple:
         rank = DATE_RANK.get(r.get("dateSource", ""), 0)
         return (r.get("status") == "usable", (r.get("width") or 0) * (r.get("height") or 0), rank, r.get("bytes") or 0)
 
-    for b, group in buckets.items():
-        candidates = buckets.get(b - 1, []) + group + buckets.get(b + 1, [])
+    groups = [(group, buckets.get(b - 1, []) + group + buckets.get(b + 1, []), same_footage) for b, group in buckets.items()]
+    groups += [(group, group, same_photo) for group in photos.values()]
+    for group, candidates, same in groups:
         for r in group:
             best = None
             for o in candidates:
-                if o is r or not same_footage(o, r):
+                if o is r or not same(o, r):
                     continue
                 if quality(o) > quality(r) or (quality(o) == quality(r) and o["id"] < r["id"]):
                     if best is None or quality(o) > quality(best):
@@ -99,19 +120,50 @@ def mark_near_duplicates(rows: list[dict]) -> None:
             r["nearDuplicateOf"] = k
 
 
-def _flat(r: dict) -> dict:
+def _flat(r: dict, meta: dict | None = None) -> dict:
     t = r.get("triage") or {}
     d = {c: r.get(c) for c in CSV_COLUMNS}
     d.update({k: t.get(k) for k in ("people", "bodySize", "view", "movement")})
+    d.update({k: (r.get("label") or {}).get(k) for k in LABEL_FIELDS})
+    d["kind"] = r.get("kind") or "video"
     d["copies"] = len(r.get("copies") or [])
+    if meta:
+        d["device"] = meta.get("device")
+        loc = meta.get("location") or {}
+        d["lat"], d["lon"] = loc.get("lat"), loc.get("lon")
     if r.get("date"):
         d["date"] = datetime.fromtimestamp(r["date"] / 1000).strftime("%Y-%m-%d %H:%M")
     return d
 
 
+def load_labels(out: Path) -> dict[str, dict]:
+    """Your review: keep, purpose, pattern, pose and a note per clip (see `phoenix-archive label`)."""
+    p = out / "labels.json"
+    if not p.exists():
+        return {}
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except ValueError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def load_meta(out: Path, cid: str) -> dict | None:
+    p = out / "clips" / cid / "meta.json"
+    try:
+        return json.loads(p.read_text(encoding="utf-8")) if p.exists() else None
+    except (OSError, ValueError):
+        return None
+
+
 def rebuild(out: Path, settings: dict | None = None) -> list[dict]:
     """index.jsonl, index.csv, report.html and archive.json, from the clip folders."""
     rows = load_clips(out)
+    labels = load_labels(out)
+    for r in rows:
+        r.pop("label", None)
+        if labels.get(r["id"]):
+            r["label"] = labels[r["id"]]
     state_path = out / "state.sqlite"
     copies: dict[str, list[dict]] = {}
     if state_path.exists():
@@ -136,7 +188,7 @@ def rebuild(out: Path, settings: dict | None = None) -> list[dict]:
         w = csv.DictWriter(f, fieldnames=CSV_COLUMNS)
         w.writeheader()
         for r in rows:
-            w.writerow(_flat(r))
+            w.writerow(_flat(r, load_meta(out, r["id"])))
     meta_path = out / "archive.json"
     meta = {}
     if meta_path.exists():
@@ -145,7 +197,8 @@ def rebuild(out: Path, settings: dict | None = None) -> list[dict]:
         except ValueError:
             meta = {}
     meta.update({"format": "phoenix-archive", "formatVersion": 1, "tool": VERSION, "model": MODEL_ID, "modelSha256": MODEL_SHA256,
-                 "updated": int(time.time() * 1000), "counts": dict(Counter(r.get("status") for r in rows))})
+                 "updated": int(time.time() * 1000), "counts": dict(Counter(r.get("status") for r in rows)),
+                 "photos": sum(1 for r in rows if r.get("kind") == "photo")})
     meta.setdefault("created", meta["updated"])
     if settings:
         meta["settings"] = settings
@@ -160,13 +213,24 @@ def light(r: dict) -> dict:
 
 
 def summary(rows: list[dict]) -> str:
-    c = Counter(r.get("status") for r in rows)
+    videos = [r for r in rows if r.get("kind") != "photo"]
+    photos = [r for r in rows if r.get("kind") == "photo"]
+    c = Counter(r.get("status") for r in videos)
     reasons = Counter(r.get("reason") for r in rows if r.get("status") == "skipped")
     usable = [r for r in rows if r.get("status") == "usable" and not r.get("nearDuplicateOf")]
     hours = sum(r.get("duration") or 0 for r in usable) / 3600
     years = Counter(datetime.fromtimestamp(r["date"] / 1000).year for r in usable if r.get("date"))
-    lines = [f"{len(rows)} clips: {c.get('usable', 0)} usable, {c.get('skipped', 0)} skipped",
-             f"{len(usable)} usable after removing near-duplicates ({hours:.1f} h of footage)"]
+    lines = [f"{len(videos)} clips: {c.get('usable', 0)} usable, {c.get('skipped', 0)} skipped"]
+    if photos:
+        p = Counter(r.get("status") for r in photos)
+        lines.append(f"{len(photos)} photos: {p.get('usable', 0)} with someone in them, {p.get('skipped', 0)} skipped")
+    n_video = sum(1 for r in usable if r.get("kind") != "photo")
+    lines.append(f"{n_video} usable clips after removing near-duplicates ({hours:.1f} h of footage)"
+                 + (f", {len(usable) - n_video} photos" if photos else ""))
+    labelled = [r for r in rows if r.get("label")]
+    if labelled:
+        k = Counter((r["label"].get("keep") or "?") for r in labelled)
+        lines.append(f"Reviewed: {len(labelled)} ({k.get('yes', 0)} keep, {k.get('no', 0)} not training)")
     if reasons:
         lines.append("Skipped: " + ", ".join(f"{n} {r}" for r, n in reasons.most_common()))
     if years:
@@ -191,13 +255,17 @@ def write_report(out: Path, rows: list[dict]) -> None:
             status = "duplicate" if r.get("nearDuplicateOf") else r.get("status", "?")
             when = datetime.fromtimestamp(r["date"] / 1000).strftime("%d %b %Y") if r.get("date") else "?"
             dur = r.get("duration") or 0
-            facts = [f"{int(dur // 60)}:{int(dur % 60):02d}", f"{r.get('width')}×{r.get('height')}"]
+            facts = ["photo" if r.get("kind") == "photo" else f"{int(dur // 60)}:{int(dur % 60):02d}", f"{r.get('width')}×{r.get('height')}"]
             if t.get("view"):
                 facts.append(f"{t['view']}-on" if t["view"] != "angle" else "at an angle")
             if t.get("people", 0) > 1:
                 facts.append(f"{t['people']} people")
             if r.get("slowmo"):
                 facts.append("slow motion")
+            lab = r.get("label") or {}
+            if lab.get("keep") == "no":
+                status = "skipped"
+            facts += [x for x in (lab.get("pattern"), lab.get("purpose") if lab.get("purpose") != "form" else None) if x]
             note = r.get("reason") or ("copy of another clip" if r.get("nearDuplicateOf") else "")
             img = f'<img loading="lazy" src="clips/{esc(r["id"])}/{esc(r["thumb"])}" alt="">' if r.get("thumb") else '<div class="noimg"></div>'
             href = f' href="clips/{esc(r["id"])}/{esc(r["proxy"])}"' if r.get("proxy") else ""
@@ -220,7 +288,7 @@ h1{{font-size:20px;margin:0 0 4px}} h2{{font-size:16px;margin:24px 0 8px}} small
 .meta{{padding:6px 8px;font-size:12px}} .name{{color:var(--muted);word-break:break-all}} .note{{color:var(--dup)}}
 .hide-skipped .skipped,.hide-duplicate .duplicate{{display:none}}
 </style></head><body>
-<h1>Video archive</h1><p><small>{c.get('usable', 0)} usable · {c.get('duplicate', 0)} copies · {c.get('skipped', 0)} skipped. Tap a usable clip to play its small copy.</small></p>
+<h1>Video archive</h1><p><small>{c.get('usable', 0)} usable · {c.get('duplicate', 0)} copies · {c.get('skipped', 0)} skipped. Tap a usable clip to play its small copy (or a photo to open it).</small></p>
 <p class="filters"><label><input type="checkbox" id="sk"> Show skipped</label><label><input type="checkbox" id="du"> Show copies</label></p>
 {''.join(cards)}
 <script>
@@ -252,9 +320,13 @@ def parse_day(s: str | None, end: bool = False) -> int | None:
     return int(d.timestamp() * 1000)
 
 
-def pack(out: Path, dest: Path, since: str | None, until: str | None, tracks_only: bool, include_copies: bool, max_gb: float) -> list[Path]:
-    """Zip files for the app: the index plus each usable clip's track, thumbnail and (unless tracks only) small copy."""
-    rows = [r for r in rebuild(out) if r.get("status") == "usable" and (include_copies or not r.get("nearDuplicateOf"))]
+def pack(out: Path, dest: Path, since: str | None, until: str | None, tracks_only: bool, include_copies: bool, max_gb: float,
+         kinds: str = "all", reviewed_only: bool = False) -> list[Path]:
+    """Zip files for the app: the index plus each usable clip's track, thumbnail and (unless tracks only) small copy.
+    Clips you marked keep=no are left out; metadata (meta.json, sidecars) never goes in."""
+    rows = [r for r in rebuild(out) if r.get("status") == "usable" and (include_copies or not r.get("nearDuplicateOf"))
+            and (r.get("label") or {}).get("keep") != "no" and (not reviewed_only or (r.get("label") or {}).get("keep") == "yes")
+            and (kinds == "all" or (r.get("kind") or "video") == kinds.rstrip("s"))]
     lo, hi = parse_day(since), parse_day(until, end=True)
     rows = [r for r in rows if (lo is None or (r.get("date") or 0) >= lo) and (hi is None or (r.get("date") or 0) < hi)]
     if not rows:

@@ -1,7 +1,10 @@
 """phoenix-archive: find the training videos in years of footage and track the joints in them.
 
-  phoenix-archive run  D:\\Videos D:\\Takeout --out D:\\phoenix-archive
+  phoenix-archive run  D:\\Videos D:\\Takeout --out D:\\phoenix-archive [--photos --keep-metadata]
   phoenix-archive status --out D:\\phoenix-archive
+  phoenix-archive sheets --out D:\\phoenix-archive        (numbered contact sheets to look through)
+  phoenix-archive label --out D:\\phoenix-archive labels.csv
+  phoenix-archive collect --out D:\\phoenix-archive --dest E:\\Lifting   (copies of the originals)
   phoenix-archive pack --out D:\\phoenix-archive --dest D:\\packs
 """
 from __future__ import annotations
@@ -18,10 +21,13 @@ from pathlib import Path
 
 from . import VERSION
 from .dates import resolve
+from .collect import collect
 from .index import clean_claims, merge, pack, parse_day, rebuild, summary
 from .media import require_ffmpeg
+from .photos import PHOTO_EDGE
 from .pose import ensure_model
 from .process import MIN_SIZE, Options, init_worker, process
+from .review import import_labels, sheets
 from .sources import in_shard, scan
 from .state import RunLock, State
 
@@ -57,12 +63,14 @@ def cmd_run(a: argparse.Namespace) -> None:
     lock = None if a.dry_run else RunLock(out)
     state = State(out / "state.sqlite")
     try:
-        print(f"phoenix-archive {VERSION}: looking for videos …", flush=True)
-        sources = scan(a.inputs)
+        print(f"phoenix-archive {VERSION}: looking for videos{' and photos' if a.photos else ''} …", flush=True)
+        sources = scan(a.inputs, photos=a.photos)
         zipped = sum(1 for s in sources if s.in_zip)
         dated = sum(1 for s in sources if s.sidecar)
         total = sum(s.size for s in sources)
-        print(f"Found {len(sources)} videos ({_gb(total)}): {len(sources) - zipped} files, {zipped} inside zips, {dated} with Takeout dates.")
+        n_photos = sum(1 for s in sources if s.kind == "photo")
+        what = f"{len(sources) - n_photos} videos" + (f" and {n_photos} photos" if a.photos else "")
+        print(f"Found {what} ({_gb(total)}): {len(sources) - zipped} files, {zipped} inside zips, {dated} with Takeout dates.")
         shard = _shard(a.shard)
         todo = [s for s in sources if in_shard(s, shard)]
         if shard:
@@ -85,7 +93,10 @@ def cmd_run(a: argparse.Namespace) -> None:
         if a.limit:
             todo = todo[: a.limit]
         todo_bytes = sum(s.size for s in todo)
-        print(f"To do: {len(todo)} videos ({_gb(todo_bytes)}), roughly {todo_bytes / (15 << 20) / 60:.1f} h of footage judging by size.")
+        video_bytes = sum(s.size for s in todo if s.kind == "video")
+        todo_photos = sum(1 for s in todo if s.kind == "photo")
+        print(f"To do: {len(todo) - todo_photos} videos{f' and {todo_photos} photos' if a.photos else ''} ({_gb(todo_bytes)}), "
+              f"roughly {video_bytes / (15 << 20) / 60:.1f} h of footage judging by size.")
         if a.dry_run or not todo:
             if not todo and not a.dry_run:
                 rows = rebuild(out)
@@ -95,14 +106,17 @@ def cmd_run(a: argparse.Namespace) -> None:
         clean_claims(out)
         tmp = Path(a.tmp).expanduser() if a.tmp else out / "tmp"
         shutil.rmtree(tmp, ignore_errors=True)
-        opts = Options(out=str(out), model=model, tmp=str(tmp), fps=a.fps, proxy_short=a.proxy, proxy_format=a.proxy_format, min_size=a.min_size)
+        opts = Options(out=str(out), model=model, tmp=str(tmp), fps=a.fps, proxy_short=a.proxy, proxy_format=a.proxy_format, min_size=a.min_size,
+                       keep_metadata=a.keep_metadata, photo_edge=a.photo_size)
+        if a.keep_metadata:
+            print("Keeping each file's full metadata (camera, settings, location) in clips/<id>/meta.json — for you only; packs leave it out.")
         workers = a.workers or max(1, (os.cpu_count() or 2) // 2)
         print(f"Working with {workers} worker{'s' if workers > 1 else ''}. Press Ctrl+C to stop; run the same command again to carry on.\n", flush=True)
         _run_pool(todo, opts, workers, state, todo_bytes)
     finally:
         try:
             if not a.dry_run:
-                rows = rebuild(out, settings={"fps": a.fps, "proxy": a.proxy, "minSize": a.min_size})
+                rows = rebuild(out, settings={"fps": a.fps, "proxy": a.proxy, "minSize": a.min_size, "photos": a.photos, "keepMetadata": a.keep_metadata})
                 print("\n" + summary(rows))
                 print(f"\nIndex: {out / 'index.csv'}\nReport: {out / 'report.html'}")
                 errors = state.errors()
@@ -151,7 +165,8 @@ def _run_pool(todo, opts: Options, workers: int, state: State, todo_bytes: int) 
                     what = f"skipped: {r.get('reason')}"
                 when = datetime.fromtimestamp(r["date"] / 1000).strftime("%Y-%m-%d") if r.get("date") else "    ?     "
                 dur = r.get("duration") or 0
-                print(f"[{n:>{len(str(len(todo)))}}/{len(todo)}] {when} {int(dur // 60):>3}:{int(dur % 60):02d}  {src.name[:48]:<48} {what}"
+                length = "photo " if src.kind == "photo" else f"{int(dur // 60):>3}:{int(dur % 60):02d}"
+                print(f"[{n:>{len(str(len(todo)))}}/{len(todo)}] {when} {length}  {src.name[:48]:<48} {what}"
                       f"{f'  ETA {_fmt_secs(eta)}' if eta else ''}", flush=True)
     except KeyboardInterrupt:
         if not stopping:
@@ -187,10 +202,45 @@ def cmd_status(a: argparse.Namespace) -> None:
 def cmd_pack(a: argparse.Namespace) -> None:
     out = Path(a.out).expanduser()
     dest = Path(a.dest).expanduser() if a.dest else out / "packs"
-    paths = pack(out, dest, a.since, a.until, a.tracks_only, a.include_copies, a.max_gb)
+    paths = pack(out, dest, a.since, a.until, a.tracks_only, a.include_copies, a.max_gb, a.kind, a.reviewed_only)
     for p in paths:
         print(f"{p}  ({_gb(p.stat().st_size)})")
     print("Import these in Phoenix Atlas: Media → Archive → Choose pack files.")
+
+
+def cmd_sheets(a: argparse.Namespace) -> None:
+    out = Path(a.out).expanduser()
+    paths, listing = sheets(out, Path(a.dest).expanduser() if a.dest else None, a.which, a.cols, a.rows, a.size, a.include_copies, a.unreviewed, a.kind)
+    if not paths:
+        print("Nothing to show.")
+        return
+    print(f"{len(paths)} sheets in {paths[0].parent} ({sum(1 for _ in open(listing, encoding='utf-8')) - 1} clips).")
+    print(f"What each number is: {listing}\nFill in its keep/purpose/pattern/pose/note columns, then: phoenix-archive label --out {out} {listing}")
+
+
+def cmd_label(a: argparse.Namespace) -> None:
+    out = Path(a.out).expanduser()
+    changed, problems = import_labels(out, Path(a.csv).expanduser())
+    for p in problems[:50]:
+        print(f"  {p}")
+    if len(problems) > 50:
+        print(f"  … and {len(problems) - 50} more")
+    print(f"Labels updated for {changed} clips ({out / 'labels.json'}).")
+    print(summary(rebuild(out)))
+
+
+def cmd_collect(a: argparse.Namespace) -> None:
+    out = Path(a.out).expanduser()
+    r = collect(out, Path(a.dest).expanduser(), a.which, a.since, a.until, a.include_copies, a.reviewed_only, a.kind, a.dry_run)
+    if a.dry_run:
+        print(f"Would copy {r['chosen']} originals ({_gb(r['bytes'])}) to {r['dest']}.")
+        return
+    print(f"Copied {r['copied']} originals to {r['dest']} ({r['already']} were already there).")
+    if r["missing"]:
+        print(f"{len(r['missing'])} couldn't be found where the run saw them (moved or changed since):")
+        for m in r["missing"][:20]:
+            print(f"  {m}")
+    print(f"List: {Path(r['dest']) / 'collected.csv'}")
 
 
 def cmd_merge(a: argparse.Namespace) -> None:
@@ -222,6 +272,10 @@ def main(argv: list[str] | None = None) -> None:
     r.add_argument("--min-size", type=float, default=MIN_SIZE, help=f"skip people smaller than this share of the frame height (default {MIN_SIZE})")
     r.add_argument("--model", help="path to pose_landmarker_full.task (downloaded automatically otherwise)")
     r.add_argument("--tmp", help="where to unpack videos from zips (default: inside --out)")
+    r.add_argument("--photos", action="store_true", help="also look at photos (JPEG, PNG, WebP; HEIC with pillow-heif)")
+    r.add_argument("--keep-metadata", action="store_true",
+                   help="save each file's full metadata (camera, settings, location, Takeout sidecar) beside its results, for your own use")
+    r.add_argument("--photo-size", type=int, default=PHOTO_EDGE, help=f"long side of a photo's small copy (default {PHOTO_EDGE})")
     r.add_argument("--redo", action="store_true", help="process everything again")
     r.add_argument("--dry-run", action="store_true", help="only count what would be done")
     r.set_defaults(func=cmd_run)
@@ -239,7 +293,38 @@ def main(argv: list[str] | None = None) -> None:
     k.add_argument("--tracks-only", action="store_true", help="leave out the small copies: joint tracks and thumbnails only")
     k.add_argument("--include-copies", action="store_true", help="include near-duplicate copies")
     k.add_argument("--max-gb", type=float, default=2.0, help="largest zip before starting another (default 2)")
+    k.add_argument("--kind", choices=["all", "videos", "photos"], default="all")
+    k.add_argument("--reviewed-only", action="store_true", help="only clips you labelled keep=yes")
     k.set_defaults(func=cmd_pack)
+
+    h = sub.add_parser("sheets", help="numbered contact sheets to look through, with a CSV to label them in")
+    h.add_argument("--out", required=True, help="the archive folder")
+    h.add_argument("--dest", help="where to write them (default: <out>/sheets)")
+    h.add_argument("--which", choices=["usable", "skipped", "all"], default="usable")
+    h.add_argument("--kind", choices=["all", "videos", "photos"], default="all")
+    h.add_argument("--unreviewed", action="store_true", help="only clips without labels yet")
+    h.add_argument("--include-copies", action="store_true")
+    h.add_argument("--cols", type=int, default=3, help="tiles across (default 3)")
+    h.add_argument("--rows", type=int, default=6, help="tiles down (default 6)")
+    h.add_argument("--size", type=int, default=180, help="frame size in pixels (default 180)")
+    h.set_defaults(func=cmd_sheets)
+
+    lb = sub.add_parser("label", help="read your labels (keep, purpose, pattern, pose, note) from a CSV")
+    lb.add_argument("csv", help="a CSV with an id or number column (sheets.csv works)")
+    lb.add_argument("--out", required=True, help="the archive folder")
+    lb.set_defaults(func=cmd_label)
+
+    c = sub.add_parser("collect", help="copy the originals (untouched, with their metadata) into one folder by year")
+    c.add_argument("--out", required=True, help="the archive folder")
+    c.add_argument("--dest", required=True, help="where the copies go (outside the archive folder)")
+    c.add_argument("--which", choices=["usable", "skipped", "all"], default="usable")
+    c.add_argument("--kind", choices=["all", "videos", "photos"], default="all")
+    c.add_argument("--since")
+    c.add_argument("--until")
+    c.add_argument("--include-copies", action="store_true", help="also near-duplicate copies")
+    c.add_argument("--reviewed-only", action="store_true", help="only clips you labelled keep=yes")
+    c.add_argument("--dry-run", action="store_true", help="only say how many and how big")
+    c.set_defaults(func=cmd_collect)
 
     m = sub.add_parser("merge", help="combine archives from several machines")
     m.add_argument("archives", nargs="+")

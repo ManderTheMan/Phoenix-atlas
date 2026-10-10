@@ -5,10 +5,13 @@
 3. Sort: look at about one frame a second. Is someone there, big enough, and how many people?
 4. Usable clips: track the joints at 15 frames a second (10 for clips over 45 s), the
    same as the app, and save a small copy and a thumbnail.
+
+Photos (with --photos) go through the same steps on their one frame (see photos.py).
 """
 from __future__ import annotations
 
 import gzip
+import hashlib
 import json
 import math
 import os
@@ -21,6 +24,7 @@ from pathlib import Path
 from . import VERSION
 from .dates import resolve
 from .media import Info, MediaError, fit, frames, make_proxy, make_thumb, probe
+from .photos import PHOTO_EDGE, THUMB_EDGE, TRACK_EDGE as PHOTO_TRACK_EDGE, as_array, exif_date, exif_meta, open_image, save_jpeg
 from .pose import MODEL_ID, Tracker, body_height_share, frontness, image_stats, joint_angle, mean_stats, to_frame, view_from_frontness
 from .sources import Source, materialize
 
@@ -41,6 +45,8 @@ class Options:
     proxy_short: int = 480
     proxy_format: str = "mp4"
     min_size: float = MIN_SIZE
+    keep_metadata: bool = False
+    photo_edge: int = PHOTO_EDGE
 
 
 _opts: Options | None = None
@@ -84,6 +90,27 @@ def _triage_fps(duration: float) -> float:
     return min(1.0, TRIAGE_SAMPLES / duration)
 
 
+def body_size(lm: list[float]) -> float | None:
+    """The person's height as a share of the frame (from the visible points when head or feet are out of frame)."""
+    s = body_height_share(lm)
+    if s is None:
+        ys = [lm[k * 3 + 1] for k in range(33) if lm[k * 3 + 2] > 0.5]
+        s = (max(ys) - min(ys)) if len(ys) > 4 else None
+    return min(1.2, s) if s is not None else None
+
+
+def decide(out: dict, n: int, seen: int, min_size: float) -> None:
+    found = seen / n if n else 0.0
+    if not n:
+        out["decision"], out["reason"] = "skipped", "no frames could be read"
+    elif found < MIN_FOUND:
+        out["decision"], out["reason"] = "skipped", "no person" if not seen else "person rarely in view"
+    elif out["bodySize"] is not None and out["bodySize"] < min_size:
+        out["decision"], out["reason"] = "skipped", "person too small in the frame"
+    else:
+        out["decision"], out["reason"] = "usable", None
+
+
 def triage(path: str, info: Info, min_size: float) -> dict:
     """About one frame a second: is there a person, how big, how many, from which side, and do they move?"""
     assert _image is not None
@@ -99,14 +126,7 @@ def triage(path: str, info: Info, min_size: float) -> dict:
     seen = [f for f in samples if f["lm"]]
     found = len(seen) / n if n else 0.0
     people = [f["people"] for f in samples if f["people"]]
-    sizes = []
-    for f in seen:
-        s = body_height_share(f["lm"])
-        if s is None:  # head or feet out of frame: use the visible points
-            ys = [f["lm"][k * 3 + 1] for k in range(33) if f["lm"][k * 3 + 2] > 0.5]
-            s = (max(ys) - min(ys)) if len(ys) > 4 else None
-        if s is not None:
-            sizes.append(min(1.2, s))
+    sizes = [s for f in seen if (s := body_size(f["lm"])) is not None]
     fr = [r for f in seen if (r := frontness(f["lm"], info.width, info.height)) is not None]
     # movement: the biggest change in a knee, hip or elbow angle on the better-seen side
     rom = 0.0
@@ -128,14 +148,7 @@ def triage(path: str, info: Info, min_size: float) -> dict:
         "sig": sig,
         "psig": psig,
     }
-    if not n:
-        out["decision"], out["reason"] = "skipped", "no frames could be read"
-    elif found < MIN_FOUND:
-        out["decision"], out["reason"] = "skipped", "no person" if not seen else "person rarely in view"
-    elif out["bodySize"] is not None and out["bodySize"] < min_size:
-        out["decision"], out["reason"] = "skipped", "person too small in the frame"
-    else:
-        out["decision"], out["reason"] = "usable", None
+    decide(out, n, len(seen), min_size)
     return out
 
 
@@ -198,9 +211,11 @@ def process(src: Source) -> dict:
             # a copy of a clip already done: keep the date this copy suggests (a Takeout sidecar may know better)
             quick, quick_source = resolve(src.sidecar, {}, src.name, src.mtime)
             dup = {"source": src.key, "clip": cid, "status": "duplicate", "date": quick, "dateSource": quick_source}
+            clip_dir.mkdir(parents=True, exist_ok=True)
+            if _opts.keep_metadata and src.sidecar:
+                keep_sidecar(clip_dir, src)
             if (clip_dir / "clip.json").exists():
                 return dup
-            clip_dir.mkdir(parents=True, exist_ok=True)
             try:
                 fd = os.open(clip_dir / ".claim", os.O_CREAT | os.O_EXCL | os.O_WRONLY)
                 os.close(fd)
@@ -224,8 +239,16 @@ def process(src: Source) -> dict:
         return {"source": src.key, "clip": None, "status": "error", "error": f"{type(e).__name__}: {e}"[:300]}
 
 
+def keep_sidecar(clip_dir: Path, src: Source) -> None:
+    """Each copy's Takeout sidecar (copies can have different ones: albums, descriptions, people), for collect."""
+    name = f"sidecar-{hashlib.sha1(src.rel.encode('utf-8')).hexdigest()[:10]}.json"
+    _write_json(clip_dir / name, {"rel": src.rel, "sidecar": src.sidecar})
+
+
 def _process(src: Source, path: str, cid: str, clip_dir: Path) -> dict:
     assert _opts is not None
+    if src.kind == "photo":
+        return _process_photo(src, path, cid, clip_dir)
     info = probe(path)
     date, date_source = resolve(src.sidecar, info.tags, src.name, src.mtime)
     row: dict = {
@@ -237,6 +260,11 @@ def _process(src: Source, path: str, cid: str, clip_dir: Path) -> dict:
     }
     if src.sidecar and src.sidecar.get("description"):
         row["description"] = str(src.sidecar["description"])[:500]
+    if _opts.keep_metadata:
+        raw = dict(info.raw)
+        (raw.get("format") or {}).pop("filename", None)
+        _write_json(clip_dir / "meta.json", {"ffprobe": raw, **({"location": loc} if (loc := video_location(info.tags)) else {}),
+                                             **({"device": dev} if (dev := video_device(info.tags)) else {})})
     thumb = clip_dir / "thumb.jpg"
     try:
         make_thumb(path, str(thumb), info, min(info.duration * 0.3, 1.5))
@@ -265,4 +293,68 @@ def _process(src: Source, path: str, cid: str, clip_dir: Path) -> dict:
         row["proxy"] = name
         row["proxyWidth"], row["proxyHeight"] = w, h
         row["proxyBytes"] = (clip_dir / name).stat().st_size
+    return row
+
+
+def video_location(tags: dict[str, str]) -> dict | None:
+    """Where a phone video was filmed: ISO 6709 text such as +51.5072-000.1276+011.000/ (Apple and Android both write it)."""
+    import re
+
+    for key in ("com.apple.quicktime.location.iso6709", "location", "location-eng"):
+        m = re.match(r"^([+-]\d+(?:\.\d+)?)([+-]\d+(?:\.\d+)?)([+-]\d+(?:\.\d+)?)?", tags.get(key, ""))
+        if m:
+            lat, lon = float(m[1]), float(m[2])
+            if abs(lat) <= 90 and abs(lon) <= 180 and (lat or lon):
+                out = {"lat": lat, "lon": lon}
+                if m[3]:
+                    out["alt"] = float(m[3])
+                return out
+    return None
+
+
+def video_device(tags: dict[str, str]) -> str | None:
+    make = tags.get("com.apple.quicktime.make") or tags.get("com.android.manufacturer") or ""
+    model = tags.get("com.apple.quicktime.model") or tags.get("com.android.model") or ""
+    return f"{make} {model}".strip() or None
+
+
+def _process_photo(src: Source, path: str, cid: str, clip_dir: Path) -> dict:
+    """One frame: when it was taken, is someone in it, and (if so) their joints and a small copy."""
+    assert _opts is not None and _image is not None
+    img, exif = open_image(path)
+    taken = exif_date(exif)
+    date, date_source = resolve(src.sidecar, {"date": taken} if taken else {}, src.name, src.mtime)
+    row: dict = {
+        "id": cid, "kind": "photo", "name": src.name, "rel": src.rel, "date": date, "dateSource": date_source,
+        "width": img.width, "height": img.height, "format": Path(src.name).suffix.lower().lstrip("."), "bytes": src.size,
+        "tool": VERSION, "model": MODEL_ID, "processedAt": int(time.time() * 1000),
+    }
+    if src.sidecar and src.sidecar.get("description"):
+        row["description"] = str(src.sidecar["description"])[:500]
+    if _opts.keep_metadata:
+        _write_json(clip_dir / "meta.json", exif_meta(exif))
+    save_jpeg(img, clip_dir / "thumb.jpg", THUMB_EDGE, 80)
+    row["thumb"] = "thumb.jpg"
+    rgb = as_array(img, PHOTO_TRACK_EDGE)
+    f = to_frame(0, _image.detect(rgb))
+    row["sig"], row["psig"] = [frame_hash(rgb)], [pose_print(f["lm"])]
+    fr = frontness(f["lm"], img.width, img.height) if f["lm"] else None
+    tri = {"samples": 1, "found": 1.0 if f["lm"] else 0.0, "people": f["people"] or 0, "peopleTypical": f["people"] or 0,
+           "bodySize": round(s, 3) if f["lm"] and (s := body_size(f["lm"])) is not None else None,
+           "frontness": round(fr, 3) if fr is not None else None, "view": view_from_frontness(fr) if fr is not None else None}
+    decide(tri, 1, 1 if f["lm"] else 0, _opts.min_size)
+    row["status"], row["reason"] = tri.pop("decision"), tri.pop("reason")
+    row["triage"] = tri
+    if row["status"] != "usable":
+        return row
+    track = {"id": cid, "model": MODEL_ID, "createdAt": int(time.time() * 1000), "width": img.width, "height": img.height, "fps": 1, "frames": [f]}
+    image = mean_stats([image_stats(rgb, f)])
+    if image:
+        track["image"] = image
+    _write_json(clip_dir / "track.json.gz", track, gz=True)
+    row["track"] = "track.json.gz"
+    row["frames"], row["tracked"] = 1, 1.0
+    w, h = save_jpeg(img, clip_dir / "photo.jpg", _opts.photo_edge, 85)
+    row["proxy"], row["proxyWidth"], row["proxyHeight"] = "photo.jpg", w, h
+    row["proxyBytes"] = (clip_dir / "photo.jpg").stat().st_size
     return row

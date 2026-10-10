@@ -4,15 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "phoenix-archive"
-version = "1.0.0"
+version = "1.1.0"
 description = "Find the training videos in years of footage and track the joints in them, on your own computer, for Phoenix Atlas."
 readme = "README.md"
 requires-python = ">=3.10"
 # the same MediaPipe release as the app's @mediapipe/tasks-vision
-dependencies = ["mediapipe==1.1.0", "numpy"]
+dependencies = ["mediapipe==1.1.0", "numpy", "Pillow>=10.1"]
 
 [project.optional-dependencies]
-test = ["pytest"]
+# iPhone photos (HEIC/HEIF) with --photos
+heic = ["pillow-heif"]
+test = ["pytest", "pillow-heif"]
 
 [project.scripts]
 phoenix-archive = "phoenix_archive.cli:main"

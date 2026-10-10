@@ -127,6 +127,7 @@ export default function ArchiveTab({ media }: { media: MediaItem[] }) {
               {sources.map((s) => s.label).join(', ')}: <strong>{plan.usable}</strong> usable clip{plan.usable === 1 ? '' : 's'}
               {plan.already ? `, ${plan.already} already here` : ''}
               {plan.copies ? `, ${plan.copies} copies of other clips left out` : ''}
+              {plan.notKept ? `, ${plan.notKept} you marked not to keep` : ''}
               {plan.noCopy ? `, ${plan.noCopy} without a small copy (packed with --tracks-only)` : ''}.
             </p>
             {yearList.length > 1 && (
@@ -153,7 +154,8 @@ export default function ArchiveTab({ media }: { media: MediaItem[] }) {
             </div>
             {plan.rows.length > 0 ? (
               <p className="tiny dim">
-                {plan.rows.length} clip{plan.rows.length === 1 ? '' : 's'} to bring in, about {formatBytes(plan.bytes)}
+                {plan.rows.length} clip{plan.rows.length === 1 ? '' : 's'}
+                {plan.photos ? ` (${plan.photos === plan.rows.length ? 'all' : plan.photos} photo${plan.photos === 1 ? '' : 's'})` : ''} to bring in, about {formatBytes(plan.bytes)}
                 {free !== undefined ? ` · ${formatBytes(free)} free for the app` : ''}. They’re stored on this device; the originals stay where they are.
               </p>
             ) : (

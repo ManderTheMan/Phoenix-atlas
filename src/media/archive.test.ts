@@ -31,7 +31,7 @@ function pack(rows: ArchiveRow[]): File {
   const files: Record<string, Uint8Array> = { 'index.jsonl': strToU8(rows.map((r) => JSON.stringify(r)).join('\n') + '\n'), 'archive.json': strToU8('{}') };
   for (const r of rows) {
     files[`clips/${r.id}/track.json.gz`] = gzipSync(strToU8(JSON.stringify(track(r.id))));
-    if (r.proxy) files[`clips/${r.id}/proxy.mp4`] = new Uint8Array(2000).fill(7);
+    if (r.proxy) files[`clips/${r.id}/${r.proxy}`] = new Uint8Array(2000).fill(7);
     files[`clips/${r.id}/thumb.jpg`] = new Uint8Array(100).fill(9);
   }
   return new File([zipSync(files, { level: 0 })], 'phoenix-archive-clips-01.zip', { type: 'application/zip' });
@@ -83,6 +83,36 @@ describe('archive import', () => {
     expect(unlabelled(items)).toHaveLength(2);
     // a second time: nothing new
     expect(planImport([src], items, { years: null, skipCrowded: false, sideOnly: false })).toMatchObject({ rows: [], already: 2 });
+  });
+
+  it('brings in photos and follows your review', async () => {
+    const rows = [
+      row(ids[0], { kind: 'photo', name: 'DSC_0042.jpg', duration: 0, proxy: 'photo.jpg', proxyWidth: 1200, proxyHeight: 1600, label: { keep: 'yes', purpose: 'progress', pose: 'side', note: 'cut, week 6' } }),
+      row(ids[1], { label: { keep: 'yes', pattern: 'hinge', variant: 'Sumo deadlift', note: 'belt on' }, description: 'PR day' }),
+      row(ids[2], { label: { keep: 'no' } }),
+      row(ids[3], { label: { keep: 'yes', pattern: 'skydiving', purpose: 'nonsense' as never } }),
+    ];
+    const src = await readArchivePack(pack(rows));
+    const plan = planImport([src], [], { years: null, skipCrowded: false, sideOnly: false });
+    expect(plan).toMatchObject({ notKept: 1, photos: 1 });
+    expect(plan.rows.map((r) => r.row.id).sort()).toEqual([ids[0], ids[1], ids[3]]);
+    const logged = [{ date: new Date(2019, 2, 12, 9).getTime(), pattern: 'squat' as const }];
+    expect(await importArchive(plan, logged)).toEqual({ imported: 3, failed: [] });
+    const by = new Map((await db.media.toArray()).map((m) => [m.source, m]));
+    const photo = by.get(`archive:${ids[0]}`)!;
+    expect(photo).toMatchObject({ kind: 'photo', purpose: 'progress', pose: 'side', mime: 'image/jpeg', width: 1200, height: 1600, notes: 'cut, week 6' });
+    expect(photo.duration).toBeUndefined();
+    expect(photo.tags).toContain('reviewed');
+    expect(await db.poses.get(photo.id)).toBeUndefined(); // the app doesn't use joints on photos
+    // your label wins over the log's guess
+    const lift = by.get(`archive:${ids[1]}`)!;
+    expect(lift).toMatchObject({ pattern: 'hinge', variant: 'Sumo deadlift', notes: 'PR day\nbelt on' });
+    expect(lift.suggestion).toBeUndefined();
+    // labels the app doesn't know are left out: the clip still comes in, waiting for a pattern
+    const odd = by.get(`archive:${ids[3]}`)!;
+    expect(odd).toMatchObject({ purpose: 'form' });
+    expect(odd.pattern).toBeUndefined();
+    expect(odd.suggestion).toMatchObject({ pattern: 'squat' });
   });
 
   it('reads the tool’s output folder and refuses other folders', async () => {

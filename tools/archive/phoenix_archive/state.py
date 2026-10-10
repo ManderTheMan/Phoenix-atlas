@@ -62,6 +62,13 @@ class State:
             out.setdefault(clip, []).append({"rel": rel, "date": date, "dateSource": ds})
         return out
 
+    def locations(self) -> dict[str, list[dict]]:
+        """Where each clip's copies are (key, rel, size, mtime), to read the originals again."""
+        out: dict[str, list[dict]] = {}
+        for clip, key, rel, size, mtime in self.db.execute("SELECT clip, key, rel, size, mtime FROM sources WHERE clip IS NOT NULL ORDER BY rel"):
+            out.setdefault(clip, []).append({"key": key, "rel": rel, "size": size, "mtime": mtime})
+        return out
+
     def errors(self) -> list[tuple[str, str]]:
         return list(self.db.execute("SELECT rel, error FROM sources WHERE status = 'error' ORDER BY rel"))
 

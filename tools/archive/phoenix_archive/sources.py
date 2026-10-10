@@ -1,6 +1,6 @@
-"""Finding videos in folders and in zip files (Google Takeout exports included).
+"""Finding videos (and, when asked, photos) in folders and in zip files (Google Takeout exports included).
 
-Every video gets a Source: where it is (a file, or a member of a zip), a stable
+Every file gets a Source: where it is (a file, or a member of a zip), a stable
 key for resuming, a path relative to the input it was found under (the same on
 every machine that sees the same inputs, which is what sharding uses), and its
 Google Takeout sidecar when there is one.
@@ -20,7 +20,8 @@ from pathlib import Path, PurePosixPath
 from typing import Iterator
 
 VIDEO_EXT = {".mp4", ".mov", ".m4v", ".3gp", ".3g2", ".mkv", ".webm", ".avi", ".mts", ".m2ts", ".mpg", ".mpeg", ".wmv"}
-# Clips smaller than this are usually a second or two of nothing.
+IMAGE_EXT = {".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp"}
+# Clips smaller than this are usually a second or two of nothing; photos smaller than this are icons and stickers.
 MIN_BYTES = 20_000
 MAX_SIDECAR_BYTES = 256_000
 SKIP_DIRS = {"__MACOSX", ".Trash", ".Trashes", "$RECYCLE.BIN", "System Volume Information", ".thumbnails", "@eaDir"}
@@ -36,6 +37,7 @@ class Source:
     size: int
     mtime: float | None
     sidecar: dict | None = field(default=None, repr=False)
+    kind: str = "video"  # or "photo"
 
     @property
     def in_zip(self) -> bool:
@@ -44,6 +46,19 @@ class Source:
 
 def is_video(name: str) -> bool:
     return PurePosixPath(name).suffix.lower() in VIDEO_EXT
+
+
+def is_image(name: str) -> bool:
+    return PurePosixPath(name).suffix.lower() in IMAGE_EXT
+
+
+def kind_of(name: str, photos: bool) -> str | None:
+    """"video", "photo" (only when photos are wanted) or None for anything else."""
+    if is_video(name):
+        return "video"
+    if photos and is_image(name):
+        return "photo"
+    return None
 
 
 def dir_key(rel_dir: str) -> str:
@@ -135,8 +150,8 @@ def _walk(root: Path) -> Iterator[Path]:
                 yield Path(dirpath) / f
 
 
-def scan(inputs: list[str], on_warning=print) -> list[Source]:
-    """All videos under the given folders, files and zips, with their Takeout sidecars attached."""
+def scan(inputs: list[str], on_warning=print, photos: bool = False) -> list[Source]:
+    """All videos (and photos, if asked) under the given folders, files and zips, with their Takeout sidecars attached."""
     sidecars = Sidecars()
     found: list[tuple[Source, str]] = []  # (source, rel dir for sidecar lookup)
 
@@ -158,14 +173,14 @@ def scan(inputs: list[str], on_warning=print) -> list[Source]:
                     data = _load_json(zf.read(info))
                     if data:
                         sidecars.add(rel_dir, name.name, data)
-                elif is_video(name.name) and info.file_size >= MIN_BYTES:
+                elif (kind := kind_of(name.name, photos)) and info.file_size >= MIN_BYTES:
                     rel = f"{label}::{info.filename}"
                     try:
                         mtime = datetime(*info.date_time).timestamp()
                     except (ValueError, OverflowError):
                         mtime = None
                     found.append((Source(key=f"zip:{zpath.resolve()}::{info.filename}", rel=rel, path=str(zpath), member=info.filename,
-                                         name=name.name, size=info.file_size, mtime=mtime), rel_dir))
+                                         name=name.name, size=info.file_size, mtime=mtime, kind=kind), rel_dir))
 
     for inp in inputs:
         p = Path(inp).expanduser()
@@ -175,9 +190,9 @@ def scan(inputs: list[str], on_warning=print) -> list[Source]:
         if p.is_file():
             if p.suffix.lower() == ".zip":
                 add_zip(p, p.name)
-            elif is_video(p.name):
+            elif kind := kind_of(p.name, photos):
                 st = p.stat()
-                found.append((Source(key=f"file:{p.resolve()}", rel=p.name, path=str(p), member=None, name=p.name, size=st.st_size, mtime=st.st_mtime), ""))
+                found.append((Source(key=f"file:{p.resolve()}", rel=p.name, path=str(p), member=None, name=p.name, size=st.st_size, mtime=st.st_mtime, kind=kind), ""))
             continue
         for f in _walk(p):
             rel = f.relative_to(p).as_posix()
@@ -195,8 +210,8 @@ def scan(inputs: list[str], on_warning=print) -> list[Source]:
                     data = None
                 if data:
                     sidecars.add(str(PurePosixPath(rel).parent), f.name, data)
-            elif is_video(f.name) and st.st_size >= MIN_BYTES:
-                found.append((Source(key=f"file:{f.resolve()}", rel=rel, path=str(f), member=None, name=f.name, size=st.st_size, mtime=st.st_mtime),
+            elif (kind := kind_of(f.name, photos)) and st.st_size >= MIN_BYTES:
+                found.append((Source(key=f"file:{f.resolve()}", rel=rel, path=str(f), member=None, name=f.name, size=st.st_size, mtime=st.st_mtime, kind=kind),
                               str(PurePosixPath(rel).parent)))
 
     seen: set[str] = set()
@@ -232,6 +247,21 @@ def _zip(path: str) -> zipfile.ZipFile:
 
 
 CHUNK = 4 << 20
+
+
+def open_source(src: Source):
+    """The original bytes, read straight from the file or the zip."""
+    return _zip(src.path).open(src.member) if src.in_zip else open(src.path, "rb")
+
+
+def source_from_key(key: str, rel: str, size: int | None = None, mtime: float | None = None) -> Source:
+    """Where a remembered source is, from its key ("file:<path>" or "zip:<zip path>::<member>")."""
+    if key.startswith("zip:"):
+        path, member = key[4:].split("::", 1)
+    else:
+        path, member = key[5:], None
+    name = PurePosixPath(member).name if member else Path(path).name
+    return Source(key=key, rel=rel, path=path, member=member, name=name, size=size or 0, mtime=mtime)
 
 
 @contextmanager

@@ -3,15 +3,27 @@
 // and joint track, so nothing needs analysing again, plus a suggested
 // movement pattern from the joints and your training log.
 import { gunzipSync, strFromU8 } from 'fflate';
-import { db, type CameraAngle, type MediaItem } from '../db/db';
+import { db, type CameraAngle, type MediaItem, type MediaPurpose, type PoseId } from '../db/db';
 import { readZip } from '../db/zip';
-import type { PatternId } from '../movement/patterns';
+import { PATTERN_BY_ID, type PatternId } from '../movement/patterns';
 import { trackSummary, type PoseTrack } from '../vision/analysis';
 import { guessPattern, loggedThatDay, suggest } from '../vision/classify';
 import { addMedia } from './media';
 
+/** What you decided about a clip while looking through the archive's contact sheets (`phoenix-archive label`). */
+export interface ArchiveLabel {
+  keep?: 'yes' | 'no';
+  purpose?: MediaPurpose;
+  pattern?: string;
+  variant?: string;
+  pose?: PoseId;
+  note?: string;
+}
+
 export interface ArchiveRow {
   id: string;
+  /** Photos come from `phoenix-archive run --photos`; rows without a kind are videos. */
+  kind?: 'video' | 'photo';
   name: string;
   date: number | null;
   dateSource: string;
@@ -34,6 +46,7 @@ export interface ArchiveRow {
   proxyBytes?: number;
   copies?: string[];
   nearDuplicateOf?: string;
+  label?: ArchiveLabel;
 }
 
 export interface ArchiveSource {
@@ -103,6 +116,10 @@ export interface ImportPlan {
   already: number;
   noCopy: number;
   copies: number;
+  /** Marked keep = no in your review. */
+  notKept: number;
+  /** Photos among the rows to bring in. */
+  photos: number;
   bytes: number;
   years: Map<number, number>;
 }
@@ -114,13 +131,17 @@ export const yearOf = (r: ArchiveRow) => (r.date ? new Date(r.date).getFullYear(
 export function planImport(sources: ArchiveSource[], existing: Pick<MediaItem, 'source'>[], o: ImportOptions): ImportPlan {
   const have = new Set(existing.map((m) => m.source).filter(Boolean));
   const seen = new Set<string>();
-  const plan: ImportPlan = { rows: [], usable: 0, already: 0, noCopy: 0, copies: 0, bytes: 0, years: new Map() };
+  const plan: ImportPlan = { rows: [], usable: 0, already: 0, noCopy: 0, copies: 0, notKept: 0, photos: 0, bytes: 0, years: new Map() };
   for (const source of sources)
     for (const row of source.rows) {
       if (row.status !== 'usable' || seen.has(row.id)) continue;
       seen.add(row.id);
       if (row.nearDuplicateOf) {
         plan.copies++;
+        continue;
+      }
+      if (row.label?.keep === 'no') {
+        plan.notKept++;
         continue;
       }
       plan.usable++;
@@ -139,6 +160,7 @@ export function planImport(sources: ArchiveSource[], existing: Pick<MediaItem, '
       if (o.sideOnly && row.triage?.view && row.triage.view !== 'side') continue;
       plan.rows.push({ row, source });
       plan.bytes += row.proxyBytes ?? 0;
+      if (row.kind === 'photo') plan.photos++;
     }
   plan.rows.sort((a, b) => (b.row.date ?? 0) - (a.row.date ?? 0));
   return plan;
@@ -151,7 +173,23 @@ export function archiveTags(row: ArchiveRow): string[] {
   const tags = ['archive'];
   if ((row.triage?.people ?? 1) > 1) tags.push('several-people');
   if (row.slowmo) tags.push('slow-motion');
+  if (row.label) tags.push('reviewed');
   return tags;
+}
+
+const PURPOSES: MediaPurpose[] = ['form', 'progress', 'other'];
+const POSES: PoseId[] = ['front', 'side', 'back', 'other'];
+
+/** Your review's choices, checked: anything the app doesn't know is left out. */
+export function fromLabel(label: ArchiveLabel | undefined): { purpose?: MediaPurpose; pattern?: PatternId; variant?: string; pose?: PoseId; note?: string } {
+  if (!label) return {};
+  return {
+    purpose: label.purpose && PURPOSES.includes(label.purpose) ? label.purpose : undefined,
+    pattern: label.pattern && PATTERN_BY_ID.has(label.pattern as PatternId) ? (label.pattern as PatternId) : undefined,
+    variant: typeof label.variant === 'string' && label.variant.trim() ? label.variant.trim().slice(0, 80) : undefined,
+    pose: label.pose && POSES.includes(label.pose) ? label.pose : undefined,
+    note: typeof label.note === 'string' && label.note.trim() ? label.note.trim().slice(0, 500) : undefined,
+  };
 }
 
 export interface ImportResult {
@@ -167,7 +205,8 @@ export async function importArchive(plan: ImportPlan, logged: { date: number; pa
     if (signal?.aborted) break;
     onProgress?.(done, plan.rows.length, row.name);
     try {
-      const [proxy, thumb, trackBlob] = await Promise.all([source.file(row.id, row.proxy!), row.thumb ? source.file(row.id, row.thumb) : undefined, row.track ? source.file(row.id, row.track) : undefined]);
+      const photo = row.kind === 'photo';
+      const [proxy, thumb, trackBlob] = await Promise.all([source.file(row.id, row.proxy!), row.thumb ? source.file(row.id, row.thumb) : undefined, !photo && row.track ? source.file(row.id, row.track) : undefined]);
       if (!proxy) throw new Error('its small copy is missing');
       let track: PoseTrack | null = null;
       if (trackBlob) {
@@ -175,20 +214,27 @@ export async function importArchive(plan: ImportPlan, logged: { date: number; pa
         track = JSON.parse(strFromU8(raw[0] === 0x1f && raw[1] === 0x8b ? gunzipSync(raw) : raw)) as PoseTrack;
       }
       const day = row.date ?? Date.now();
-      const s = track ? suggest(guessPattern(track), loggedThatDay(day, logged)) : null;
-      const tracked = track && s?.pattern ? trackSummary(track, s.pattern) : undefined;
+      const lab = fromLabel(row.label);
+      // your label wins over the guess; without one, the joints and your log suggest a pattern
+      const s = track && !lab.pattern ? suggest(guessPattern(track), loggedThatDay(day, logged)) : null;
+      const pattern = lab.pattern;
+      const tracked = track && (pattern ?? s?.pattern) ? trackSummary(track, (pattern ?? s?.pattern)!) : undefined;
+      const notes = [row.description, lab.note].filter(Boolean).join('\n') || undefined;
       const item = await addMedia({
-        blob: new Blob([proxy], { type: row.proxy!.endsWith('.webm') ? 'video/webm' : 'video/mp4' }),
-        kind: 'video',
-        purpose: 'form',
+        blob: new Blob([proxy], { type: photo ? 'image/jpeg' : row.proxy!.endsWith('.webm') ? 'video/webm' : 'video/mp4' }),
+        kind: photo ? 'photo' : 'video',
+        purpose: lab.purpose ?? 'form',
         date: day,
         width: row.proxyWidth ?? row.width,
         height: row.proxyHeight ?? row.height,
-        duration: row.duration,
+        duration: photo ? undefined : row.duration,
         thumb: thumb ? new Blob([thumb], { type: 'image/jpeg' }) : undefined,
         tags: archiveTags(row),
         camera: row.triage?.view ? CAMERA[row.triage.view] : undefined,
-        notes: row.description || undefined,
+        notes,
+        pattern,
+        variant: lab.variant,
+        pose: lab.pose,
         source: archiveKey(row.id),
         original: {
           archiveId: row.id,

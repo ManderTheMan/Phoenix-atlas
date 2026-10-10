@@ -51,6 +51,7 @@ class Info:
     rotation: int
     has_audio: bool
     tags: dict[str, str] = field(default_factory=dict)
+    raw: dict = field(default_factory=dict, repr=False)  # everything ffprobe reported, for --keep-metadata
 
     @property
     def slowmo(self) -> bool:
@@ -117,7 +118,7 @@ def probe(path: str, timeout: float = 120) -> Info:
             pass
     return Info(width=w, height=h, duration=duration, fps=round(fps, 3) if fps else None, capture_fps=capture,
                 codec=str(video.get("codec_name") or "?"), rotation=rotation,
-                has_audio=any(s.get("codec_type") == "audio" for s in streams), tags=tags)
+                has_audio=any(s.get("codec_type") == "audio" for s in streams), tags=tags, raw=data)
 
 
 def _tag_duration(v: str | None) -> float:

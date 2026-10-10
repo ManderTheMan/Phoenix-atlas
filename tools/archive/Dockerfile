@@ -10,7 +10,7 @@ ENV XDG_CACHE_HOME=/opt/cache PYTHONUNBUFFERED=1
 WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY phoenix_archive ./phoenix_archive
-RUN pip install --no-cache-dir . \
+RUN pip install --no-cache-dir ".[heic]" \
  && phoenix-archive model \
  && chmod -R a+rX /opt/cache
 

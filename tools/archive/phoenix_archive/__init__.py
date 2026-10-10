@@ -7,4 +7,4 @@ copy of each usable clip and an index, ready to import into Phoenix Atlas.
 Nothing is uploaded anywhere.
 """
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
