@@ -4,6 +4,7 @@
 // from the mechanics, not a measurement of muscle activity (EMG).
 import { heatRgb, rgbHex } from '../lib/feeling';
 import { runModel, type JointId, type JointResult, type ModelInput, type ModelResult } from './biomech';
+import { kindOf, PEAK_FACTOR, strengthShare } from './strength';
 import { groupStructures, type GroupId } from './groups';
 import type { PatternDef, Role } from './patterns';
 
@@ -31,18 +32,26 @@ export interface GroupEffort {
   joint?: JointResult;
 }
 
-/** Demand as a share of the typical maximum for a joint. */
-export function relativeDemand(j: JointResult, mass: number, sign: 1 | -1 = 1): number {
-  return Math.max(0, (sign * j.demand) / (CAPACITY[j.id] * mass));
+/**
+ * What the muscles at a joint can produce at its current angle (N·m): the typical
+ * maximum, shaped by the strength curve for that angle, times your own scale.
+ */
+export function capacity(j: JointResult, mass: number, sign: 1 | -1 = j.demand >= 0 ? 1 : -1, scale = 1): number {
+  return CAPACITY[j.id] * mass * PEAK_FACTOR * strengthShare(kindOf(j, sign), j.angle) * scale;
 }
 
-export function groupEfforts(p: PatternDef, result: ModelResult, mass: number): GroupEffort[] {
+/** Demand as a share of what the joint's muscles can produce at this angle. */
+export function relativeDemand(j: JointResult, mass: number, sign: 1 | -1 = 1, scale = 1): number {
+  return Math.max(0, (sign * j.demand) / capacity(j, mass, sign, scale));
+}
+
+export function groupEfforts(p: PatternDef, result: ModelResult, mass: number, scale = 1): GroupEffort[] {
   return p.groups.map((tag) => {
     const base = tag.base ?? (tag.driver ? 0.04 : 0.3);
     if (!tag.driver) return { group: tag.group, role: tag.role, effort: base };
     const j = result.joints.find((x) => x.id === tag.driver!.joint);
     if (!j) return { group: tag.group, role: tag.role, effort: base };
-    const r = relativeDemand(j, mass, tag.driver.sign);
+    const r = relativeDemand(j, mass, tag.driver.sign, scale);
     return { group: tag.group, role: tag.role, effort: Math.min(1, base + r * ROLE_K[tag.role] * (tag.share ?? 1)), joint: j };
   });
 }
@@ -67,4 +76,43 @@ export function sweep(p: PatternDef, inp: Omit<ModelInput, 'phase'>, steps = 24)
     const phase = i / steps;
     return { phase, result: runModel(p.model, { ...inp, phase }) };
   });
+}
+
+/** The hardest joint at one point in the range: its share of what it can produce there. */
+export function hardest(result: ModelResult, mass: number, scale = 1): { joint: JointResult; rel: number } | null {
+  let best: { joint: JointResult; rel: number } | null = null;
+  for (const j of result.joints) {
+    if (Math.abs(j.demand) < 4) continue; // held by the joint, not the muscles
+    const rel = relativeDemand(j, mass, j.demand >= 0 ? 1 : -1, scale);
+    if (!best || rel > best.rel) best = { joint: j, rel };
+  }
+  return best;
+}
+
+export interface StickingPoint {
+  phase: number;
+  joint: JointResult;
+  /** Share of what that joint can produce there (1 = at your max). */
+  rel: number;
+}
+
+/** Where in the range the lift is hardest: the point where some joint is closest to what it can produce. */
+export function stickingPoint(points: { phase: number; result: ModelResult }[], mass: number, scale = 1): StickingPoint | null {
+  let best: StickingPoint | null = null;
+  for (const { phase, result } of points) {
+    const h = hardest(result, mass, scale);
+    if (h && (!best || h.rel > best.rel)) best = { phase, joint: h.joint, rel: h.rel };
+  }
+  return best;
+}
+
+/**
+ * Your strength against the typical trained adult the curves describe, from a
+ * max: at that load the hardest point of the lift should be all you've got, so
+ * the scale is how hard the model finds it with typical strength.
+ */
+export function personalScale(p: PatternDef, inp: Omit<ModelInput, 'phase' | 'load'>, max: number): number {
+  if (!(max > 0)) return 1;
+  const sp = stickingPoint(sweep(p, { ...inp, load: max }, 24), inp.mass);
+  return sp ? Math.max(0.4, Math.min(2.5, sp.rel)) : 1;
 }

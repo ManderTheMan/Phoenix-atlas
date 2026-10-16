@@ -9,10 +9,12 @@ import Icon from '../components/Icon';
 import BodyViewer, { type AxisMarker } from '../components/viewer/BodyViewer';
 import { useActivities, useNotes } from '../hooks/useData';
 import { bodyDims, type V3 } from '../model/bodyShape';
-import { effortColor, effortColors, groupEfforts, relativeDemand, sweep } from '../movement/activation';
+import { effortColor, effortColors, groupEfforts, personalScale, relativeDemand, stickingPoint, sweep } from '../movement/activation';
 import { runModel, type JointId } from '../movement/biomech';
 import { groupsOfStructure, groupStructures, GROUP_BY_ID, type GroupId } from '../movement/groups';
-import { PATTERN_BY_ID, type PatternId } from '../movement/patterns';
+import { classifyExercise, PATTERN_BY_ID, type PatternId } from '../movement/patterns';
+import { liftKey } from '../movement/rpe';
+import { useRpe } from '../movement/useRpe';
 import { lastLoad, summarizeTraining } from '../movement/training';
 import { shapeInputFrom, useBody, useBodyMass } from '../profile/profile';
 import { useUI, type CameraView, type LayerState, type Selection } from '../state/ui';
@@ -56,6 +58,8 @@ export default function MovementPage() {
   const [skeleton, setSkeleton] = useState(true);
   const [showDeep, setShowDeep] = useState(false);
   const [view, setView] = useState<{ view: CameraView; n: number }>({ view: 'angle', n: 1 });
+  const [scaled, setScaled] = useState(true);
+  const rpe = useRpe();
   const touchedLoad = useRef(new Set<PatternId>());
 
   const pattern = PATTERN_BY_ID.get(state.pattern)!;
@@ -119,12 +123,27 @@ export default function MovementPage() {
   const load = variant.load === 'none' ? 0 : state.load;
   const inp = useMemo(() => ({ dims, mass, load, options }), [dims, mass, load, options]);
   const result = useMemo(() => runModel(pattern.model, { ...inp, phase: state.phase }), [pattern.model, inp, state.phase]);
+  // your estimated max for this lift (from your rated sets), to scale strength to you
+  const liftMax = useMemo(() => {
+    if (variant.load === 'none') return null;
+    let best: { name: string; max: number; date: number } | null = null;
+    for (const o of rpe.obs) {
+      if (o.pattern !== pattern.id || (best && o.date < best.date)) continue;
+      if (classifyExercise(o.name)?.variant !== variant.value && o.lift !== liftKey(variant.label)) continue;
+      const mx = rpe.learner.maxAt(o.lift);
+      if (mx && !mx.rough) best = { name: o.name, max: mx.value, date: o.date };
+    }
+    return best;
+  }, [rpe, pattern.id, variant]);
+  const scale = useMemo(() => (scaled && liftMax ? personalScale(pattern, { dims, mass, options }, liftMax.max) : 1), [scaled, liftMax, pattern, dims, mass, options]);
+  const points = useMemo(() => sweep(pattern, inp, 30), [pattern, inp]);
   const curves = useMemo(() => {
     const out: Record<string, number[]> = {};
-    for (const { result: r } of sweep(pattern, inp, 30)) for (const j of r.joints) (out[j.id] ??= []).push(j.demand);
+    for (const { result: r } of points) for (const j of r.joints) (out[j.id] ??= []).push(Math.abs(j.demand) < 4 ? 0 : relativeDemand(j, mass, j.demand >= 0 ? 1 : -1, scale));
     return out;
-  }, [pattern, inp]);
-  const efforts = useMemo(() => groupEfforts(pattern, result, mass), [pattern, result, mass]);
+  }, [points, mass, scale]);
+  const sticking = useMemo(() => stickingPoint(points, mass, scale), [points, mass, scale]);
+  const efforts = useMemo(() => groupEfforts(pattern, result, mass, scale), [pattern, result, mass, scale]);
 
   const summary = useMemo(() => summarizeTraining(notes, activities, { weeks }), [notes, activities, weeks]);
 
@@ -147,7 +166,7 @@ export default function MovementPage() {
     for (const a of pattern.axes) {
       const j = result.joints.find((x) => x.id === a.joint);
       if (!j) continue;
-      const rel = relativeDemand(j, mass, j.demand >= 0 ? 1 : -1);
+      const rel = relativeDemand(j, mass, j.demand >= 0 ? 1 : -1, scale);
       a.at.forEach((name, i) => {
         const center = (shape?.joints[name] ?? LM.joints[name]) as V3;
         const dir = a.joint === 'ankle' && a.dir === 'x' && LM.axes[name] ? LM.axes[name] : DIRS[a.dir];
@@ -163,7 +182,7 @@ export default function MovementPage() {
       });
     }
     return out;
-  }, [tab, pattern, result, mass, shape]);
+  }, [tab, pattern, result, mass, shape, scale]);
 
   const onPick = (sel: Selection) => {
     const gs = groupsOfStructure(sel.structureId);
@@ -253,6 +272,11 @@ export default function MovementPage() {
             onSelectGroup={setGroup}
             playing={playing}
             onPlay={setPlaying}
+            scale={scale}
+            scaleInfo={liftMax}
+            scaled={scaled}
+            onScaled={setScaled}
+            sticking={sticking}
           />
         ) : tab === 'effort' ? (
           <EffortPanel />

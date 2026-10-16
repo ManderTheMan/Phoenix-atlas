@@ -10,6 +10,7 @@
 // The numbers are estimates of joint demand, not measurements of muscle activity.
 import landmarks from '../anatomy/landmarks.json';
 import type { BodyDims } from '../model/bodyShape';
+import { withAngles } from './strength';
 
 export type P2 = [number, number];
 type P3 = [number, number, number];
@@ -30,6 +31,8 @@ export interface JointResult {
   arm: number;
   /** Demand is per leg / per arm. */
   perSide: boolean;
+  /** The joint's angle in the measure its strength curve uses (src/movement/strength.ts), from the side view. */
+  angle?: number;
   /** View the joint is drawn in, its position, and where the perpendicular meets the load line. */
   view: number;
   at: P2;
@@ -807,5 +810,5 @@ export const MODELS = { squat, hinge, lunge, bench, press, row, pullup, carry, p
 export type ModelId = keyof typeof MODELS;
 
 export function runModel(id: ModelId, inp: ModelInput): ModelResult {
-  return MODELS[id]({ ...inp, phase: clamp(inp.phase, 0, 1) });
+  return withAngles(MODELS[id]({ ...inp, phase: clamp(inp.phase, 0, 1) }));
 }

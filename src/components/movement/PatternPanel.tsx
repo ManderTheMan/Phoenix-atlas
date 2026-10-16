@@ -1,14 +1,15 @@
 import { useMemo } from 'react';
 import { formatMeasure, type Units } from '../../profile/profile';
-import { CAPACITY, effortColor, relativeDemand, ROLE_LABEL, type GroupEffort } from '../../movement/activation';
+import { CAPACITY, effortColor, relativeDemand, ROLE_LABEL, type GroupEffort, type StickingPoint } from '../../movement/activation';
 import type { JointId, ModelResult } from '../../movement/biomech';
 import { GROUP_BY_ID, type GroupId } from '../../movement/groups';
 import { PATTERNS, type PatternDef, type PatternId } from '../../movement/patterns';
+import { CURVES, kindOf, PEAK_FACTOR, strengthShare } from '../../movement/strength';
 import { formatShort } from '../../lib/dates';
 import { formSeries, markName, markValue, useMedia } from '../../media/media';
 import { useMediaUI } from '../../media/mediaUI';
 import { useUI } from '../../state/ui';
-import { Seg } from '../common';
+import { Check, Seg } from '../common';
 import Icon from '../Icon';
 import MediaThumb from '../media/MediaThumb';
 import LeverageDiagram from './LeverageDiagram';
@@ -21,17 +22,27 @@ export interface PatternState {
   phase: number;
 }
 
+/** A small line of a value over the range; effort (never negative) is drawn up from the bottom with 100% at the top. */
 function Spark({ values, at, color }: { values: number[]; at: number; color: string }) {
   const W = 84, H = 24;
+  const positive = values.every((v) => v >= 0);
   const max = Math.max(1, ...values.map(Math.abs));
-  const pts = values.map((v, i) => `${(i / (values.length - 1)) * W},${H / 2 - (v / max) * (H / 2 - 2)}`).join(' ');
+  const y = (v: number) => (positive ? H - 2 - (v / max) * (H - 4) : H / 2 - (v / max) * (H / 2 - 2));
+  const pts = values.map((v, i) => `${(i / (values.length - 1)) * W},${y(v)}`).join(' ');
   return (
     <svg width={W} height={H} className="spark" aria-hidden>
-      <line x1={0} x2={W} y1={H / 2} y2={H / 2} className="spark-zero" />
+      {positive ? <line x1={0} x2={W} y1={y(1)} y2={y(1)} className="spark-zero" strokeDasharray="2 2" /> : <line x1={0} x2={W} y1={H / 2} y2={H / 2} className="spark-zero" />}
       <polyline points={pts} fill="none" stroke={color} strokeWidth={1.6} />
       <line x1={at * W} x2={at * W} y1={1} y2={H - 1} className="spark-at" />
     </svg>
   );
+}
+
+/** Where a point of the range is, in words: “at the bottom”, or how far back up. */
+function where(pattern: PatternDef, phase: number): string {
+  if (phase >= 0.95) return `at “${pattern.phase[1]}”`;
+  if (phase <= 0.05) return `at “${pattern.phase[0]}”`;
+  return `${Math.round((1 - phase) * 100)}% of the way from “${pattern.phase[1]}” back to “${pattern.phase[0]}”`;
 }
 
 export default function PatternPanel({
@@ -52,6 +63,11 @@ export default function PatternPanel({
   onSelectGroup,
   playing,
   onPlay,
+  scale,
+  scaleInfo,
+  scaled,
+  onScaled,
+  sticking,
 }: {
   state: PatternState;
   setState: (patch: Partial<PatternState>) => void;
@@ -70,7 +86,15 @@ export default function PatternPanel({
   onSelectGroup: (g: GroupId | null) => void;
   playing: boolean;
   onPlay: (p: boolean) => void;
+  /** Your strength against the typical lifter (1 = typical). */
+  scale: number;
+  /** The max the scale comes from, when there is one. */
+  scaleInfo: { name: string; max: number } | null;
+  scaled: boolean;
+  onScaled: (v: boolean) => void;
+  sticking: StickingPoint | null;
 }) {
+  const whose = scaled && scaleInfo ? 'your' : 'a typical';
   const variant = pattern.variants.find((v) => v.value === state.variant) ?? pattern.variants[0];
   const hasLoad = variant.load !== 'none' && pattern.loadMax > 0;
   const kg = units === 'imperial' ? 0.45359237 : 1;
@@ -171,6 +195,24 @@ export default function PatternPanel({
             </div>
           </div>
         </div>
+        {sticking && (
+          <div className="sticking row between">
+            <span className="small">
+              <strong>Hardest point</strong> {where(pattern, sticking.phase)}: {sticking.joint.label.toLowerCase()} at {Math.round(sticking.rel * 100)}% of {whose} max for that angle.
+            </span>
+            <button className="btn ghost small" onClick={() => (onPlay(false), setState({ phase: sticking.phase }))}>
+              Show
+            </button>
+          </div>
+        )}
+        {scaleInfo && (
+          <label className="row small" style={{ gap: 8 }}>
+            <Check on={scaled} onChange={onScaled} label="Scale strength to my max" />
+            <span>
+              Scale to my max <span className="dim">({scaleInfo.name}: {formatMeasure(scaleInfo.max, 'kg', units)}, so {scale.toFixed(2)}× a typical trained lifter)</span>
+            </span>
+          </label>
+        )}
         {result.warnings.map((w) => (
           <p key={w} className="small warn-text">
             {w}
@@ -181,11 +223,11 @@ export default function PatternPanel({
             <span>Joint</span>
             <span>Lever</span>
             <span>Torque</span>
-            <span>Over the range</span>
+            <span>Effort over the range</span>
           </div>
           {result.joints.map((j) => {
             const color = jointColor(j.id);
-            const rel = relativeDemand(j, mass, j.demand >= 0 ? 1 : -1);
+            const rel = relativeDemand(j, mass, j.demand >= 0 ? 1 : -1, scale);
             const small = Math.abs(j.demand) < 4;
             return (
               <button key={j.id} role="row" className={`jt-row ${selectedJoint === j.id ? 'on' : ''}`} onClick={() => onSelectJoint(selectedJoint === j.id ? null : j.id)}>
@@ -199,7 +241,7 @@ export default function PatternPanel({
                 <span className="mono small">{Math.round(Math.abs(j.arm) * 100)} cm</span>
                 <span className="mono small">
                   {small ? '≈ 0' : Math.round(Math.abs(j.demand))} N·m
-                  <span className="tiny muted block">{small ? '' : `${Math.round(rel * 100)}% of max${j.perSide ? ' · each side' : ''}`}</span>
+                  <span className="tiny muted block">{small ? '' : `${Math.round(rel * 100)}% of max here${j.perSide ? ' · each side' : ''}`}</span>
                 </span>
                 <Spark values={curves[j.id] ?? []} at={state.phase} color={color} />
               </button>
@@ -213,7 +255,13 @@ export default function PatternPanel({
             return (
               <p className="small dim">
                 <strong>{j.label}:</strong> the load’s line passes {Math.round(Math.abs(j.arm) * 1000) / 10} cm from the joint’s axis, so the muscles must make{' '}
-                {Math.round(Math.abs(j.demand))} N·m{j.perSide ? ' on each side' : ''} — about {Math.round(relativeDemand(j, mass, j.demand >= 0 ? 1 : -1) * 100)}% of what they typically can ({CAPACITY[j.id]} N·m per kg). Shorten the lever and the work drops.
+                {Math.round(Math.abs(j.demand))} N·m{j.perSide ? ' on each side' : ''} — about {Math.round(relativeDemand(j, mass, j.demand >= 0 ? 1 : -1, scale) * 100)}% of what {whose === 'your' ? 'yours' : 'a typical lifter’s'} can produce at this angle.
+                {(() => {
+                  const kind = kindOf(j);
+                  if (kind === 'flat' || j.angle === undefined) return ` (Typically ${CAPACITY[j.id]} N·m per kg.)`;
+                  return ` At ${Math.round(j.angle)}° of ${CURVES[kind].angle}, these muscles have ${Math.round(strengthShare(kind, j.angle) * 100)}% of their peak strength (strongest around ${CURVES[kind].peak}°; ${Math.round(CAPACITY[j.id] * PEAK_FACTOR * 10) / 10} N·m per kg there, typically).`;
+                })()}{' '}
+                Shorten the lever and the work drops.
               </p>
             );
           })()}
@@ -253,7 +301,7 @@ export default function PatternPanel({
         </div>
         <p className="tiny muted">
           Estimates from a slow-motion model of your proportions and body mass, with segment masses from Winter’s anthropometric tables. Effort is the
-          joint torque as a share of a typical maximum for a trained adult. It is not measured muscle activity.
+          joint torque as a share of what the muscles can produce at that joint angle (strength curves after Anderson et al., 2007){scaled && scaleInfo ? ', scaled so your max is 100% at the hardest point' : ', for a typical trained adult'}. It is not measured muscle activity.
         </p>
       </div>
     </>

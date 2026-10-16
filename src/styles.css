@@ -1569,3 +1569,4 @@ ol.steps code, p code, li code { font-family: var(--mono); font-size: 12px; back
 .side-sub { font-size: 13px; font-weight: 600; margin: 0 0 8px; }
 .max-row { display: flex; flex-direction: column; gap: 2px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
 .max-row:last-of-type { border-bottom: 0; }
+.sticking { gap: 8px; align-items: center; padding: 6px 8px; border-radius: 8px; background: color-mix(in srgb, var(--accent) 10%, transparent); }
