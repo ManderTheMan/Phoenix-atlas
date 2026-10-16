@@ -22,8 +22,10 @@ import {
   type SeriesPoint,
 } from '../../vision/analysis';
 import { useVisionJobs } from '../../vision/jobs';
+import { hasVelocity } from '../../vision/velocity';
 import { Check } from '../common';
 import Icon from '../Icon';
+import SpeedPanel from './SpeedPanel';
 import { fmtTime } from './VideoBar';
 
 function AngleChart({ series, duration, t, reps, onSeek, label }: { series: SeriesPoint[]; duration: number; t: number; reps: Rep[]; onSeek: (t: number) => void; label: string }) {
@@ -223,6 +225,7 @@ export default function PosePanel({
               )}
             </>
           )}
+          {isVideo && hasVelocity(item.pattern) && <SpeedPanel item={item} track={track} seek={seek} />}
           <div className="row wrap" style={{ gap: 6 }}>
             <button className="btn small" onClick={addBottomMarks}>
               <Icon name="angle" /> Add angles {isVideo ? 'at rep 1’s bottom' : ''}

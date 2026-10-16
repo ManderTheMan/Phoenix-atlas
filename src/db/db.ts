@@ -3,6 +3,7 @@
 import Dexie, { type Table } from 'dexie';
 import type { CategoryId } from '../lib/feeling';
 import type { PoseTrack } from '../vision/analysis';
+import type { VelocitySummary } from '../vision/velocity';
 import { migrateNoteIds } from './migrate';
 
 export type Vec3 = [number, number, number];
@@ -25,6 +26,8 @@ export interface ExerciseEntry {
   durationMin?: number;
   distanceKm?: number;
   notes?: string;
+  /** How hard the last (hardest) set was, RPE 1–10. */
+  rpe?: number;
 }
 
 export interface Measurement {
@@ -163,7 +166,11 @@ export interface MediaItem {
   /** Where it came from; "archive:<id>" for clips brought in from the archive tool. */
   source?: string;
   /** The original file of an archive clip (the stored file is a small copy). */
-  original?: { archiveId: string; name: string; width: number; height: number; bytes: number; fps?: number; codec?: string; dateSource: string; copies?: number; slowmo?: boolean };
+  original?: { archiveId: string; name: string; width: number; height: number; bytes: number; fps?: number; captureFps?: number; codec?: string; dateSource: string; copies?: number; slowmo?: boolean };
+  /** How hard this set was, RPE 1–10 (what you felt; the app's estimate learns from it). */
+  rpe?: number;
+  /** Each rep's lifting speed from the joint track (src/vision/velocity.ts), kept so the RPE model needn't load tracks. */
+  velocity?: VelocitySummary;
   /** Reps and depth from the joint track for the clip's movement, kept so lists needn't load tracks. */
   tracked?: { pattern: string; joint: string; reps: number; deepest?: number; spread?: number; down?: number; up?: number };
   /** A suggested movement pattern, waiting to be confirmed. */

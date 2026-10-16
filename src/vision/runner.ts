@@ -210,5 +210,7 @@ export async function analyzeMedia(item: MediaItem, blob: Blob, opts: { fps?: nu
     }
   }
   await db.poses.put(track);
+  // a new track: its summaries are worked out again from it
+  await db.media.update(item.id, { tracked: undefined, velocity: undefined });
   return track;
 }

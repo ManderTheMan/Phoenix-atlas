@@ -7,6 +7,9 @@ import { CATEGORIES, SENSATIONS, SENSATION_BY_ID, feelingColor } from '../../lib
 import { useTagCounts } from '../../hooks/useData';
 import { useMedia } from '../../media/media';
 import { useMediaUI } from '../../media/mediaUI';
+import { classifyExercise } from '../../movement/patterns';
+import { liftKey } from '../../movement/rpe';
+import { fmtRpe, useRpe } from '../../movement/useRpe';
 import { Check, ConfirmButton } from '../common';
 import Icon from '../Icon';
 import MediaThumb from '../media/MediaThumb';
@@ -42,6 +45,19 @@ export default function NoteEditor({ draft, notes, onChange, onSave, onCancel, o
 
   const setWorkout = (patch: Partial<NonNullable<NoteDraft['workout']>>) =>
     onChange({ workout: { exercises: [], ...draft.workout, ...patch } });
+  const { learner } = useRpe();
+  /** What the app makes of a logged set: the RPE its weight suggests against your max. */
+  const rpeHint = (ex: ExerciseEntry): { rpe: number; text: string } | null => {
+    if (!ex.name || !ex.load || !ex.reps) return null;
+    const load = ex.unit === 'lb' ? ex.load * 0.45359237 : ex.load;
+    const e = learner.estimate({ date: draft.date ?? Date.now(), lift: liftKey(ex.name), pattern: classifyExercise(ex.name)?.pattern, load, reps: ex.reps });
+    if (!e?.fromLoad) return null;
+    const max = ex.unit === 'lb' ? e.fromLoad.e1rm / 0.45359237 : e.fromLoad.e1rm;
+    return {
+      rpe: Math.round(e.fromLoad.rpe * 2) / 2,
+      text: `Last set ≈ ${fmtRpe(e.fromLoad.rpe)} against your max of about ${Math.round(max)} ${ex.unit ?? 'kg'}${e.fromLoad.rough ? ' (rough until you rate some sets)' : ''}.`,
+    };
+  };
   const setExercise = (i: number, patch: Partial<ExerciseEntry>) =>
     setWorkout({ exercises: exercises.map((e, j) => (j === i ? { ...e, ...patch } : e)) });
   const measures = draft.measurements ?? [];
@@ -178,7 +194,7 @@ export default function NoteEditor({ draft, notes, onChange, onSave, onCancel, o
               <input className="input" type="number" min={0} inputMode="numeric" value={draft.workout?.durationMin ?? ''} onChange={(e) => setWorkout({ durationMin: num(e.target.value) })} />
             </div>
             <div className="field">
-              <label>Effort (RPE 1–10)</label>
+              <label>Session effort (RPE 1–10)</label>
               <input className="input" type="number" min={1} max={10} inputMode="numeric" value={draft.workout?.rpe ?? ''} onChange={(e) => setWorkout({ rpe: num(e.target.value) })} />
             </div>
           </div>
@@ -189,19 +205,38 @@ export default function NoteEditor({ draft, notes, onChange, onSave, onCancel, o
                 <span>Sets</span>
                 <span>Reps</span>
                 <span>Load</span>
+                <span title="How hard the last set was, RPE 1–10">RPE</span>
                 <span />
               </div>
               {exercises.map((ex, i) => (
-                <div className="ex-row" key={i}>
+                <div className="ex-block" key={i}>
+                <div className="ex-row">
                   <input className="input" placeholder="Back squat" value={ex.name} onChange={(e) => setExercise(i, { name: e.target.value })} />
                   <input className="input" type="number" inputMode="numeric" value={ex.sets ?? ''} onChange={(e) => setExercise(i, { sets: num(e.target.value) })} aria-label="Sets" />
                   <input className="input" type="number" inputMode="numeric" value={ex.reps ?? ''} onChange={(e) => setExercise(i, { reps: num(e.target.value) })} aria-label="Reps" />
                   <div className="row" style={{ gap: 2 }}>
                     <input className="input" type="number" inputMode="decimal" value={ex.load ?? ''} onChange={(e) => setExercise(i, { load: num(e.target.value) })} aria-label="Load" />
                   </div>
+                  <input
+                    className="input"
+                    type="number"
+                    min={1}
+                    max={10}
+                    step={0.5}
+                    inputMode="decimal"
+                    placeholder={rpeHint(ex) ? `~${rpeHint(ex)!.rpe}` : ''}
+                    value={ex.rpe ?? ''}
+                    onChange={(e) => {
+                      const v = num(e.target.value);
+                      setExercise(i, { rpe: v !== undefined && v >= 1 && v <= 10 ? v : undefined });
+                    }}
+                    aria-label="RPE of the last set"
+                  />
                   <button className="btn ghost icon small" onClick={() => setWorkout({ exercises: exercises.filter((_, j) => j !== i) })} aria-label="Remove exercise">
                     <Icon name="x" size={14} />
                   </button>
+                </div>
+                {ex.rpe === undefined && rpeHint(ex) && <p className="tiny muted ex-hint">{rpeHint(ex)!.text} Enter how it felt and it learns.</p>}
                 </div>
               ))}
               <div className="row small muted">

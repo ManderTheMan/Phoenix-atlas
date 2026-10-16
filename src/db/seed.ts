@@ -176,6 +176,12 @@ export async function seedDemoData(): Promise<number> {
   );
 
   // --- Workouts ---------------------------------------------------------------
+  // the last set's RPE, as if the lifter's true max were `mult` × the working weight (± a little)
+  const rpeRand = rng(7);
+  const rpeFor = (load: number, reps: number, mult: number) => {
+    const max = load * mult * (1 + (rpeRand() - 0.5) * 0.03);
+    return Math.max(6, Math.min(10, Math.round((10 - (30 * (max / load - 1) - reps)) * 2) / 2));
+  };
   const legs = () => [at('muscular.rectus_femoris_muscle_l', 'front'), at('muscular.rectus_femoris_muscle_r', 'front'), at('muscular.gluteus_maximus_muscle_l', 'back'), at('muscular.gluteus_maximus_muscle_r', 'back')];
   const push = () => [at('muscular.sternocostal_head_of_pectoralis_major_muscle_l', 'front'), at('muscular.sternocostal_head_of_pectoralis_major_muscle_r', 'front'), at('muscular.long_head_of_triceps_brachii_l', 'back'), at('muscular.long_head_of_triceps_brachii_r', 'back')];
   const pull = () => [at('muscular.latissimus_dorsi_muscle_l', 'back'), at('muscular.latissimus_dorsi_muscle_r', 'back'), at('muscular.long_head_of_biceps_brachii_l', 'front'), at('muscular.long_head_of_biceps_brachii_r', 'front')];
@@ -190,8 +196,8 @@ export async function seedDemoData(): Promise<number> {
         workout: {
           durationMin: 60 + Math.round(rand() * 15), rpe: 7 + Math.round(rand() * 2),
           exercises: [
-            { name: 'Back squat', sets: 5, reps: 5, load: Math.round(90 + progress * 20), unit: 'kg' },
-            { name: 'Romanian deadlift', sets: 3, reps: 8, load: Math.round(80 + progress * 15), unit: 'kg' },
+            { name: 'Back squat', sets: 5, reps: 5, load: Math.round(90 + progress * 20), unit: 'kg', rpe: rpeFor(90 + progress * 20, 5, 1.23) },
+            { name: 'Romanian deadlift', sets: 3, reps: 8, load: Math.round(80 + progress * 15), unit: 'kg', rpe: rpeFor(80 + progress * 15, 8, 1.35) },
             { name: 'Split squat', sets: 3, reps: 10, load: 16, unit: 'kg' },
           ],
         },
@@ -205,7 +211,7 @@ export async function seedDemoData(): Promise<number> {
         workout: {
           durationMin: 55, rpe: 7,
           exercises: [
-            { name: 'Bench press', sets: 5, reps: 5, load: Math.round(75 + progress * 10), unit: 'kg' },
+            { name: 'Bench press', sets: 5, reps: 5, load: Math.round(75 + progress * 10), unit: 'kg', rpe: rpeFor(75 + progress * 10, 5, 1.21) },
             { name: ago > 24 && ago < 48 ? 'Landmine press' : 'Overhead press', sets: 4, reps: 6, load: Math.round(40 + progress * 12), unit: 'kg' },
             { name: 'Dips', sets: 3, reps: 10 },
           ],
@@ -218,7 +224,7 @@ export async function seedDemoData(): Promise<number> {
         workout: {
           durationMin: 50, rpe: 7,
           exercises: [
-            { name: 'Deadlift', sets: 3, reps: 3, load: ago > 62 ? 130 : ago > 40 ? 100 : Math.round(110 + progress * 30), unit: 'kg' },
+            { name: 'Deadlift', sets: 3, reps: 3, load: ago > 62 ? 130 : ago > 40 ? 100 : Math.round(110 + progress * 30), unit: 'kg', rpe: ago > 40 && ago <= 62 ? 6.5 : 8.5 },
             { name: 'Pull-ups', sets: 4, reps: 8 },
             { name: 'Barbell row', sets: 3, reps: 8, load: 70, unit: 'kg' },
           ],

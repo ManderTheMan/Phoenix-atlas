@@ -26,7 +26,7 @@ import {
 } from '../media/media';
 import { useMediaUI, type MediaTab } from '../media/mediaUI';
 import { PATTERN_BY_ID, PATTERNS, type PatternId } from '../movement/patterns';
-import { formatMeasure, MEASURE_BY_KEY, measureLabel, useBody } from '../profile/profile';
+import { formatMeasure, MEASURE_BY_KEY, measureLabel, useBody, useBodyDims } from '../profile/profile';
 import { useUI } from '../state/ui';
 import { JOINTS, type JointId } from '../vision/analysis';
 import { refreshSummaries } from '../vision/jobs';
@@ -290,10 +290,11 @@ function FormTab({
   const current = pattern !== null && (counts.has(pattern) || PATTERN_BY_ID.has(pattern as PatternId)) ? pattern : (form[form.length - 1]?.pattern ?? '');
   const def = current ? PATTERN_BY_ID.get(current as PatternId) : undefined;
   const series = useMemo(() => form.filter((m) => (m.pattern ?? '') === current), [form, current]);
-  // keep each clip's tracked reps and depth up to date (a few at a time), then chart the depth over time
+  const dims = useBodyDims();
+  // keep each clip's tracked reps, depth and rep speeds up to date (a few at a time), then chart them over time
   useEffect(() => {
-    void refreshSummaries(series);
-  }, [series]);
+    void refreshSummaries(series, dims);
+  }, [series, dims]);
   const trends = useMemo(() => {
     const marked = markTrends(series);
     const pts = series.filter((m) => m.tracked?.pattern === current && m.tracked.deepest !== undefined).map((m) => ({ x: m.date, y: m.tracked!.deepest!, id: m.id }));

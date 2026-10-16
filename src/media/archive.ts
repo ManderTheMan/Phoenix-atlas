@@ -6,7 +6,9 @@ import { gunzipSync, strFromU8 } from 'fflate';
 import { db, type CameraAngle, type MediaItem, type MediaPurpose, type PoseId } from '../db/db';
 import { readZip } from '../db/zip';
 import { PATTERN_BY_ID, type PatternId } from '../movement/patterns';
+import type { BodyDims } from '../model/bodyShape';
 import { trackSummary, type PoseTrack } from '../vision/analysis';
+import { timeScaleOf, velocitySummary } from '../vision/velocity';
 import { guessPattern, loggedThatDay, suggest } from '../vision/classify';
 import { addMedia } from './media';
 
@@ -31,6 +33,8 @@ export interface ArchiveRow {
   width: number;
   height: number;
   fps?: number | null;
+  /** Frame rate it was filmed at, when the phone recorded it (slow motion). */
+  captureFps?: number | null;
   slowmo?: boolean;
   codec?: string;
   bytes: number;
@@ -198,7 +202,13 @@ export interface ImportResult {
 }
 
 /** Brings the planned clips in, newest first. Stops cleanly between clips when the signal aborts. */
-export async function importArchive(plan: ImportPlan, logged: { date: number; pattern?: PatternId }[], onProgress?: (done: number, total: number, name: string) => void, signal?: AbortSignal): Promise<ImportResult> {
+export async function importArchive(
+  plan: ImportPlan,
+  logged: { date: number; pattern?: PatternId }[],
+  onProgress?: (done: number, total: number, name: string) => void,
+  signal?: AbortSignal,
+  dims?: BodyDims,
+): Promise<ImportResult> {
   const result: ImportResult = { imported: 0, failed: [] };
   let done = 0;
   for (const { row, source } of plan.rows) {
@@ -243,6 +253,7 @@ export async function importArchive(plan: ImportPlan, logged: { date: number; pa
           height: row.height,
           bytes: row.bytes,
           fps: row.fps ?? undefined,
+          captureFps: row.captureFps ?? undefined,
           codec: row.codec,
           dateSource: row.dateSource,
           copies: row.copies?.length,
@@ -251,7 +262,12 @@ export async function importArchive(plan: ImportPlan, logged: { date: number; pa
         tracked,
         suggestion: s ? { pattern: s.pattern, confidence: Math.round(s.confidence * 100) / 100, from: s.from, why: s.why, options: s.options, reps: tracked?.reps } : undefined,
       });
-      if (track) await db.poses.put({ ...track, id: item.id });
+      if (track) {
+        await db.poses.put({ ...track, id: item.id });
+        const k = timeScaleOf(item);
+        const v = dims && pattern && k !== null ? velocitySummary(track, pattern, dims, { timeScale: k }) : null;
+        if (v) await db.media.update(item.id, { velocity: v });
+      }
       result.imported++;
     } catch (e) {
       result.failed.push({ name: row.name, reason: (e as Error).message });

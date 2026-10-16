@@ -4,7 +4,9 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { create } from 'zustand';
 import { db, type MediaItem } from '../db/db';
 import { getMediaBlob } from '../media/media';
+import type { BodyDims } from '../model/bodyShape';
 import { trackSummary, type PoseTrack } from './analysis';
+import { hasVelocity, timeScaleOf, velocitySummary } from './velocity';
 
 interface Job {
   done: number;
@@ -80,12 +82,15 @@ export function usePoseTrack(id: string | null | undefined): PoseTrack | null | 
 
 const noTrack = new Set<string>();
 
+const staleSummary = (m: MediaItem) => !!m.pattern && m.tracked?.pattern !== m.pattern;
+const staleSpeed = (m: MediaItem, dims?: BodyDims) => !!dims && hasVelocity(m.pattern) && m.velocity?.pattern !== m.pattern;
+
 /**
- * Keeps each clip's reps-and-depth summary in step with its movement and joint track, a few clips at a
- * time, so long lists (years of archive clips) never need every track in memory.
+ * Keeps each clip's reps-and-depth summary and rep speeds in step with its movement and joint track, a few
+ * clips at a time, so long lists (years of archive clips) never need every track in memory.
  */
-export async function refreshSummaries(items: MediaItem[], limit = 25): Promise<number> {
-  const stale = items.filter((m) => m.kind === 'video' && m.pattern && m.tracked?.pattern !== m.pattern && !noTrack.has(m.id)).slice(0, limit);
+export async function refreshSummaries(items: MediaItem[], dims?: BodyDims, limit = 25): Promise<number> {
+  const stale = items.filter((m) => m.kind === 'video' && (staleSummary(m) || staleSpeed(m, dims)) && !noTrack.has(m.id)).slice(0, limit);
   let n = 0;
   for (const m of stale) {
     const t = await db.poses.get(m.id);
@@ -93,7 +98,14 @@ export async function refreshSummaries(items: MediaItem[], limit = 25): Promise<
       noTrack.add(m.id);
       continue;
     }
-    await db.media.update(m.id, { tracked: trackSummary(t, m.pattern!) });
+    const patch: Partial<MediaItem> = {};
+    if (staleSummary(m)) patch.tracked = trackSummary(t, m.pattern!);
+    if (staleSpeed(m, dims)) {
+      const k = timeScaleOf(m);
+      // an empty record when there's nothing to measure, so it isn't looked at again
+      patch.velocity = (k !== null && velocitySummary(t, m.pattern!, dims!, { timeScale: k })) || { pattern: m.pattern!, v: [], peak: [], rom: [], dur: [], h: dims!.height, point: 'wrist' };
+    }
+    await db.media.update(m.id, patch);
     n++;
   }
   return n;

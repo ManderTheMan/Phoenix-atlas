@@ -10,6 +10,7 @@ import { formatBytes, formatDuration, requestPersistentStorage, storageInfo, upd
 import { useMediaUI } from '../../media/mediaUI';
 import { PATTERN_BY_ID, PATTERNS, type PatternId } from '../../movement/patterns';
 import { loggedExercises } from '../../movement/training';
+import { useBodyDims } from '../../profile/profile';
 import { useUI } from '../../state/ui';
 import { Check } from '../common';
 import Icon from '../Icon';
@@ -26,6 +27,7 @@ export default function ArchiveTab({ media }: { media: MediaItem[] }) {
   const notes = useNotes();
   const activities = useActivities();
   const logged = useMemo(() => loggedExercises(notes, activities).exercises, [notes, activities]);
+  const dims = useBodyDims();
   const archived = useMemo(() => media.filter((m) => m.source?.startsWith('archive:')), [media]);
 
   // ---------------------------------------------------------------- import
@@ -68,7 +70,7 @@ export default function ArchiveTab({ media }: { media: MediaItem[] }) {
     abort.current = new AbortController();
     setResult(null);
     try {
-      const r = await importArchive(plan, logged, (done, total, name) => setProgress({ done, total, name }), abort.current.signal);
+      const r = await importArchive(plan, logged, (done, total, name) => setProgress({ done, total, name }), abort.current.signal, dims);
       setResult(r);
     } finally {
       setProgress(null);

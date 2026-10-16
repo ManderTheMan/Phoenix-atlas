@@ -779,7 +779,8 @@ input[type='range'] {
   border-radius: 8px;
 }
 
-.ex-row { display: grid; grid-template-columns: minmax(0, 1fr) 54px 54px 64px 30px; gap: 6px; align-items: center; }
+.ex-row { display: grid; grid-template-columns: minmax(0, 1fr) 46px 46px 60px 50px 30px; gap: 6px; align-items: center; }
+.ex-hint { margin: 2px 0 4px; }
 .ex-row .input { padding: 7px 8px; min-height: 34px; }
 .ex-head { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
 
@@ -1556,3 +1557,15 @@ ol.steps code, p code, li code { font-family: var(--mono); font-size: 12px; back
 .coach-note textarea { width: 100%; }
 .how-list { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
 .join-card { border-color: rgba(255, 122, 61, 0.55); }
+
+/* rep speed and effort (media viewer) */
+.speed-bars { width: 100%; height: auto; display: block; }
+.speed-bar { fill: var(--accent); opacity: 0.85; }
+.speed-bars .clickable:hover .speed-bar { opacity: 1; }
+.effort-box { border: 1px solid var(--line); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.rpe-chips .chip { min-width: 40px; justify-content: center; }
+
+/* effort tab (movement page) */
+.side-sub { font-size: 13px; font-weight: 600; margin: 0 0 8px; }
+.max-row { display: flex; flex-direction: column; gap: 2px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.max-row:last-of-type { border-bottom: 0; }

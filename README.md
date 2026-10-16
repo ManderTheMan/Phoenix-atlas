@@ -78,6 +78,7 @@ The demo photos are renders of the 3D body fitted to the demo measurements, and 
 
 **Computer vision and datasets**
 - **Automatic joint tracking.** An on-device pose model (MediaPipe Pose Landmarker, run in the browser; nothing is uploaded) finds 33 body landmarks in every frame. The viewer draws the skeleton over the video, shows your knee, hip, torso and shin angles as it plays, charts the main joint angle through the clip, and finds each rep with its depth and tempo (seconds down and up).
+- **Rep speed and effort.** From the joint track alone, each rep's lifting speed (m/s, scaled by your own limb lengths, slow motion corrected) and how much the set slowed. The app estimates how hard the set was (RPE) from that slowdown and, given the weight, from your estimated max. Every RPE you enter on a clip or a logged exercise tunes the estimate to you. **Movement → Effort** shows your maxes per lift, your own speed at failure, and how the estimate's accuracy has improved.
 - **One tap to measurements.** Turn the tracker's result into start and bottom markers (so the leverage model follows your video) or into Knee, Hip and Torso lean measurements that chart over time. It also compares itself with the angles you drew by hand.
 - **Capture-quality checks.** Each photo and video is checked for resolution, frame rate, framing, body size, camera angle, steadiness, joint confidence, lighting and sharpness, with why each matters and what to change next time.
 - **Test the tracker.** The 3D body is posed by the squat model, filmed side-on and tracked; because its true joint angles are known, you see the tracker's error and bias.
@@ -216,6 +217,16 @@ npm run build      # type-checks and builds to dist/
 Each pattern is a quasi-static model: the movement is treated as slow enough that inertia can be ignored. The model poses your segments at a point in the range and keeps you balanced over mid-foot where that applies. It then sums the torque from the load and from each body segment, using the masses and centres of mass in Winter's anthropometric tables. Pressing and pulling use a 3D arm with two links, so grip width and elbow angle matter. Running uses a typical ground reaction force over the stance phase.
 
 Estimated effort is a joint's torque as a share of a typical maximum for a trained adult (for example 3.5 N·m per kg of body mass for the knee extensors). It is scaled by the group's role. These are estimates from the mechanics for learning and planning. They are not measured muscle activity (EMG) and not a clinical assessment.
+
+### How rep speed and the RPE estimate work
+
+`src/vision/velocity.ts` times the lifting phase of each rep from the movement's main joint angle: the knee, hip or elbow opening, or closing for pulls. Each phase is trimmed to 5–95% of its range so pauses don't count. The speed is that of the body point that moves with the bar: the shoulders for squats, lunges and pull-ups, the hands for everything else. Pixels become metres through your thigh, shin, upper arm and forearm lengths. Each limb's length is taken as the longest it usually appears, since turning towards the camera only shortens it.
+
+`src/movement/rpe.ts` estimates RPE (10 − reps in reserve) two ways:
+- **From the load.** Epley's formula against your estimated max for that exercise. The max is fitted to your recent sets that have an RPE, following a trend when you're getting stronger. A per-exercise bias learned from your ratings corrects what's left.
+- **From the video.** A small linear model per movement turns the last rep's speed and the share of speed lost into reps in reserve. It starts from typical bar-speed figures and is updated (Bayesian, one rated set at a time) with every RPE you enter.
+
+The two are combined by how accurate each has been for you. Everything is replayed in date order, each set predicted before it's learned from, so the accuracy chart is an honest measure of how well it would have guessed.
 
 ### How body fitting works
 

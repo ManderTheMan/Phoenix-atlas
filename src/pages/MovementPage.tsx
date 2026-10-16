@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import landmarks from '../anatomy/landmarks.json';
 import type { LayerId } from '../anatomy/types';
 import PatternPanel, { type PatternState } from '../components/movement/PatternPanel';
+import EffortPanel from '../components/movement/EffortPanel';
 import TrainingPanel, { FULL_SETS } from '../components/movement/TrainingPanel';
 import { Check, Seg } from '../components/common';
 import Icon from '../components/Icon';
@@ -45,7 +46,7 @@ export default function MovementPage() {
   const activities = useActivities();
   const { profile, values, shape } = useBody();
   const healthMass = useBodyMass();
-  const [tab, setTab] = useState<'pattern' | 'training'>('pattern');
+  const [tab, setTab] = useState<'pattern' | 'training' | 'effort'>('pattern');
   const [sheet, setSheet] = useState<'collapsed' | 'open' | 'full'>('open');
   const [state, setStateRaw] = useState<PatternState>(() => defaultsFor((ui.movementPattern as PatternId) ?? 'squat'));
   const [joint, setJoint] = useState<JointId | null>(null);
@@ -229,6 +230,7 @@ export default function MovementPage() {
             options={[
               { value: 'pattern', label: <><Icon name="axis" size={15} /> Pattern & leverage</> },
               { value: 'training', label: <><Icon name="chart" size={15} /> My training</> },
+              { value: 'effort', label: <><Icon name="gauge" size={15} /> Effort</> },
             ]}
           />
         </div>
@@ -252,6 +254,8 @@ export default function MovementPage() {
             playing={playing}
             onPlay={setPlaying}
           />
+        ) : tab === 'effort' ? (
+          <EffortPanel />
         ) : (
           <TrainingPanel
             summary={summary}

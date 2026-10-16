@@ -5,7 +5,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useMemo } from 'react';
 import { db, getSetting, setSetting, uid, type MeasurementEntry } from '../db/db';
-import { computeBodyShape, REFERENCE, type BodyShape, type ShapeInput, type ShapeKey } from '../model/bodyShape';
+import { bodyDims, computeBodyShape, REFERENCE, type BodyDims, type BodyShape, type ShapeInput, type ShapeKey } from '../model/bodyShape';
 
 export type Units = 'metric' | 'imperial';
 
@@ -169,6 +169,12 @@ export function useBody(): { profile: Profile; values: Partial<Record<MeasureKey
   const values = useMemo(() => currentValues(entries), [entries]);
   const shape = useMemo(() => (profile.applyToModel ? computeBodyShape(shapeInputFrom(values)) : null), [profile.applyToModel, values]);
   return { profile, values, shape, entries };
+}
+
+/** Your body's proportions (metres) from your measurements, for anything that turns the picture into real distances. */
+export function useBodyDims(): BodyDims {
+  const entries = useMeasurements();
+  return useMemo(() => bodyDims(shapeInputFrom(currentValues(entries))), [entries]);
 }
 
 /** Body mass for the movement models: the profile's weight, or the latest weight from health data. */
