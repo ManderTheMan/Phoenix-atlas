@@ -8,6 +8,7 @@ import { readZip } from '../db/zip';
 import { PATTERN_BY_ID, type PatternId } from '../movement/patterns';
 import type { BodyDims } from '../model/bodyShape';
 import { trackSummary, type PoseTrack } from '../vision/analysis';
+import { formSummary } from '../vision/form';
 import { timeScaleOf, velocitySummary } from '../vision/velocity';
 import { guessPattern, loggedThatDay, suggest } from '../vision/classify';
 import { addMedia } from './media';
@@ -266,7 +267,8 @@ export async function importArchive(
         await db.poses.put({ ...track, id: item.id });
         const k = timeScaleOf(item);
         const v = dims && pattern && k !== null ? velocitySummary(track, pattern, dims, { timeScale: k }) : null;
-        if (v) await db.media.update(item.id, { velocity: v });
+        const f = dims && pattern && k !== null ? formSummary(track, pattern, dims, { timeScale: k }) : null;
+        if (v || f) await db.media.update(item.id, { velocity: v ?? undefined, form: f ?? undefined });
       }
       result.imported++;
     } catch (e) {

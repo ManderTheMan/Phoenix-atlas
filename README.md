@@ -79,6 +79,7 @@ The demo photos are renders of the 3D body fitted to the demo measurements, and 
 **Computer vision and datasets**
 - **Automatic joint tracking.** An on-device pose model (MediaPipe Pose Landmarker, run in the browser; nothing is uploaded) finds 33 body landmarks in every frame. The viewer draws the skeleton over the video, shows your knee, hip, torso and shin angles as it plays, charts the main joint angle through the clip, and finds each rep with its depth and tempo (seconds down and up).
 - **Sticking points.** Effort follows each joint's strength at its angle, so the leverage panel shows where a lift is hardest and which joint limits it. With an estimated max, it scales to your strength.
+- **Form, rep by rep.** On a tracked clip, the numbers a coach watches for that lift, for every rep: depth and hip height in a squat, back angle and whether the hips shoot up in a deadlift, bar drift from mid-foot, lean-back in a press, swing in a pull-up. It notes what changed as the set went on and, once you have a few clips of a lift, how this set compares with your usual. A side-on plot shows the bar's path each rep.
 - **Rep speed and effort.** From the joint track alone, each rep's lifting speed (m/s, scaled by your own limb lengths, slow motion corrected) and how much the set slowed. The app estimates how hard the set was (RPE) from that slowdown and, given the weight, from your estimated max. Every RPE you enter on a clip or a logged exercise tunes the estimate to you. **Movement → Effort** shows your maxes per lift, your own speed at failure, and how the estimate's accuracy has improved.
 - **One tap to measurements.** Turn the tracker's result into start and bottom markers (so the leverage model follows your video) or into Knee, Hip and Torso lean measurements that chart over time. It also compares itself with the angles you drew by hand.
 - **Capture-quality checks.** Each photo and video is checked for resolution, frame rate, framing, body size, camera angle, steadiness, joint confidence, lighting and sharpness, with why each matters and what to change next time.
@@ -230,6 +231,10 @@ Effort is scaled by the group's role. Where effort peaks through the range is th
 - **From the video.** A small linear model per movement turns the last rep's speed and the share of speed lost into reps in reserve. It starts from typical bar-speed figures and is updated (Bayesian, one rated set at a time) with every RPE you enter.
 
 The two are combined by how accurate each has been for you. Everything is replayed in date order, each set predicted before it's learned from, so the accuracy chart is an honest measure of how well it would have guessed.
+
+### How the form markers work
+
+`src/vision/form.ts` splits a set into reps at the turning points of the main joint angle (the same ones the speed uses) and reads each rep's markers from the near-side joints: angles at the bottom (or the top of a pull), the bar point's furthest distance from the middle of the foot while lifting (heel and toe give mid-foot and which way you face), the hip's rise against the shoulder's early in a pull, and so on. Distances use the same limb-length scale as rep speed. Across the set, the first third of the reps is compared with the last; against your usual, the set's average is compared with the median of your earlier clips of the same lift and variant. Each marker has a size of change worth mentioning and a direction that counts as worse; changes in the other direction are noted without a warning. Everything is measured flat in the picture, so a camera off to the side shifts the numbers: compare clips filmed from the same spot.
 
 ### How body fitting works
 

@@ -6,6 +6,7 @@ import { db, type MediaItem } from '../db/db';
 import { getMediaBlob } from '../media/media';
 import type { BodyDims } from '../model/bodyShape';
 import { trackSummary, type PoseTrack } from './analysis';
+import { formSummary, hasForm } from './form';
 import { hasVelocity, timeScaleOf, velocitySummary } from './velocity';
 
 interface Job {
@@ -84,13 +85,14 @@ const noTrack = new Set<string>();
 
 const staleSummary = (m: MediaItem) => !!m.pattern && m.tracked?.pattern !== m.pattern;
 const staleSpeed = (m: MediaItem, dims?: BodyDims) => !!dims && hasVelocity(m.pattern) && m.velocity?.pattern !== m.pattern;
+const staleForm = (m: MediaItem, dims?: BodyDims) => !!dims && hasForm(m.pattern) && m.form?.pattern !== m.pattern;
 
 /**
- * Keeps each clip's reps-and-depth summary and rep speeds in step with its movement and joint track, a few
+ * Keeps each clip's reps-and-depth summary, rep speeds and form markers in step with its movement and joint track, a few
  * clips at a time, so long lists (years of archive clips) never need every track in memory.
  */
 export async function refreshSummaries(items: MediaItem[], dims?: BodyDims, limit = 25): Promise<number> {
-  const stale = items.filter((m) => m.kind === 'video' && (staleSummary(m) || staleSpeed(m, dims)) && !noTrack.has(m.id)).slice(0, limit);
+  const stale = items.filter((m) => m.kind === 'video' && (staleSummary(m) || staleSpeed(m, dims) || staleForm(m, dims)) && !noTrack.has(m.id)).slice(0, limit);
   let n = 0;
   for (const m of stale) {
     const t = await db.poses.get(m.id);
@@ -104,6 +106,10 @@ export async function refreshSummaries(items: MediaItem[], dims?: BodyDims, limi
       const k = timeScaleOf(m);
       // an empty record when there's nothing to measure, so it isn't looked at again
       patch.velocity = (k !== null && velocitySummary(t, m.pattern!, dims!, { timeScale: k })) || { pattern: m.pattern!, v: [], peak: [], rom: [], dur: [], h: dims!.height, point: 'wrist' };
+    }
+    if (staleForm(m, dims)) {
+      const k = timeScaleOf(m);
+      patch.form = (k !== null && formSummary(t, m.pattern!, dims!, { timeScale: k })) || { pattern: m.pattern!, reps: [], h: dims!.height };
     }
     await db.media.update(m.id, patch);
     n++;

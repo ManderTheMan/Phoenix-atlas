@@ -103,6 +103,7 @@ export const PATTERNS: PatternDef[] = [
     model: 'hinge',
     variants: [
       { value: 'conventional', label: 'Deadlift (from the floor)', load: 120 },
+      { value: 'sumo', label: 'Sumo deadlift', load: 120 },
       { value: 'rdl', label: 'Romanian deadlift', load: 80 },
     ],
     options: [],
@@ -387,6 +388,7 @@ const RULES: [RegExp, ExerciseMatch][] = [
   [/split squat|bulgarian|lunge|step[- ]?up|pistol|skater squat/, { pattern: 'lunge', variant: 'knee' }],
   [/squat|leg press|hack|belt squat/, { pattern: 'squat', variant: 'highbar' }],
   [/romanian|\brdl\b|stiff[- ]?leg|good ?morning|single[- ]leg deadlift|hip thrust|glute bridge|swing|back extension|hyperextension|reverse hyper/, { pattern: 'hinge', variant: 'rdl' }],
+  [/sumo/, { pattern: 'hinge', variant: 'sumo' }],
   [/deadlift|clean|snatch|rack pull|trap bar|jefferson/, { pattern: 'hinge', variant: 'conventional' }],
   [/push[- ]?up|press[- ]?up/, { pattern: 'pushH', variant: 'pushup' }],
   [/bench|chest press|floor press|\bdips?\b|fly|flye|pec deck|svend/, { pattern: 'pushH', variant: 'bench' }],

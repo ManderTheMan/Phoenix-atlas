@@ -179,10 +179,17 @@ interface StandingPose {
   n: P2;
 }
 
-function standingPose(d: BodyDims, phiS: number, phiT: number, phiB: number): StandingPose {
+/**
+ * A standing pose from shin, thigh and trunk angles. `turn` is how far the legs
+ * point out to the sides (a wide, toes-out stance such as a sumo deadlift): the
+ * legs then reach less far forward and back in the side view (by its cosine),
+ * while their heights are unchanged.
+ */
+function standingPose(d: BodyDims, phiS: number, phiT: number, phiB: number, turn = 0): StandingPose {
   const A: P2 = [0, d.ankleHeight];
-  const K = add(A, mul(dir(phiS), d.shank));
-  const H = add(K, mul([-Math.sin(phiT), Math.cos(phiT)], d.thigh));
+  const c = Math.cos(turn);
+  const K = add(A, mul([Math.sin(phiS) * c, Math.cos(phiS)], d.shank));
+  const H = add(K, mul([-Math.sin(phiT) * c, Math.cos(phiT)], d.thigh));
   const u = dir(phiB);
   const n: P2 = [Math.cos(phiB), -Math.sin(phiB)];
   const S = add(H, mul(u, d.torso));
@@ -282,14 +289,16 @@ function squat(inp: ModelInput): ModelResult {
 function hinge(inp: ModelInput): ModelResult {
   const { dims: d, mass, load, options: o } = inp;
   const rdl = o.variant === 'rdl';
+  const sumo = o.variant === 'sumo';
+  const turn = sumo ? 45 * deg : 0; // wide stance, knees out over the toes
   const t = inp.phase;
   const f = footGeom(d);
   const armLen = d.upperArm + d.forearm + d.hand * 0.5;
-  const phiS = rdl ? lerp(3, 11, Math.min(1, t * 3)) * deg : lerp(1, 17, t) * deg;
+  const phiS = rdl ? lerp(3, 11, Math.min(1, t * 3)) * deg : sumo ? lerp(1, 12, t) * deg : lerp(1, 17, t) * deg;
   // pose for a thigh angle: torso angle from balance, arms hanging straight down
   const poseFor = (phiT: number) => {
     const at = (phiB: number) => {
-      const p = standingPose(d, phiS, phiT, phiB);
+      const p = standingPose(d, phiS, phiT, phiB, turn);
       const bar: P2 = [p.S[0], p.S[1] - armLen];
       const items = bodyItems(p, d, mass, lerp2(p.S, bar, 0.5));
       return { p, bar, items };
@@ -309,6 +318,7 @@ function hinge(inp: ModelInput): ModelResult {
   const joints = lowerBodyJoints(p, items, loadItem, bar[0], 0.5, phiS + solT.x);
   const warnings: string[] = [];
   if (!ok || !solT.ok) warnings.push(rdl ? 'Your proportions won’t reach this depth with soft knees.' : 'Your proportions can’t reach the floor in this setup.');
+  if (sumo) warnings.push('Sumo: the side view shows the legs turned out 45°. The work the hips do out to the side (adductors) isn’t counted here.');
   const all = [...Object.values(items).filter((i) => i !== items.upperTrunk), loadItem];
   return {
     views: [

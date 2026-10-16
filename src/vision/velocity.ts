@@ -13,7 +13,7 @@ import type { BodyDims } from '../model/bodyShape';
 import { angleSeries, landmark, nearSide, smooth, type JointId, type LandmarkName, type PoseTrack, type SeriesPoint, type Side } from './analysis';
 
 /** The body point that moves with the bar, per pattern. */
-const BAR_POINT: Record<string, 'shoulder' | 'wrist'> = {
+export const BAR_POINT: Record<string, 'shoulder' | 'wrist'> = {
   squat: 'shoulder', // the bar sits on the upper back
   lunge: 'shoulder',
   hinge: 'wrist', // the bar hangs from the hands
@@ -25,7 +25,7 @@ const BAR_POINT: Record<string, 'shoulder' | 'wrist'> = {
 };
 
 /** The joint whose angle shows the lifting phase, and whether lifting opens it (squat, press) or closes it (pull). */
-const LIFT_JOINT: Record<string, { joint: JointId; lift: 'opens' | 'closes'; minRom: number }> = {
+export const LIFT_JOINT: Record<string, { joint: JointId; lift: 'opens' | 'closes'; minRom: number }> = {
   squat: { joint: 'knee', lift: 'opens', minRom: 25 },
   lunge: { joint: 'knee', lift: 'opens', minRom: 25 },
   hinge: { joint: 'hip', lift: 'opens', minRom: 25 },
@@ -187,23 +187,30 @@ export function liftPhases(track: PoseTrack, pattern: string, side: Side = nearS
     const a = turns[i - 1], b = turns[i];
     const lifting = def.lift === 'opens' ? a.kind === 'low' && b.kind === 'high' : a.kind === 'high' && b.kind === 'low';
     if (!lifting) continue;
-    const span = b.v - a.v;
-    const pts = ang.filter((p) => p.v !== null && p.t >= a.t && p.t <= b.t) as { t: number; v: number }[];
-    const frac = (v: number) => (v - a.v) / span;
-    // first time past 95%, then the last time under 5% before it (both interpolated between frames)
-    const i1 = pts.findIndex((p) => frac(p.v) >= 0.95);
-    if (i1 < 1) continue;
-    let i0 = 0;
-    for (let i = 0; i < i1; i++) if (frac(pts[i].v) <= 0.05) i0 = i;
-    const cross = (p: { t: number; v: number }, q: { t: number; v: number }, f: number) => {
-      const fp = frac(p.v), fq = frac(q.v);
-      return fq === fp ? q.t : p.t + ((f - fp) / (fq - fp)) * (q.t - p.t);
-    };
-    const t0 = i0 + 1 <= i1 && frac(pts[i0].v) <= 0.05 ? cross(pts[i0], pts[i0 + 1], 0.05) : pts[i0].t;
-    const t1 = cross(pts[i1 - 1], pts[i1], 0.95);
-    if (t1 > t0) phases.push({ t0, t1 });
+    const ph = travel(ang, a, b);
+    if (ph) phases.push(ph);
   }
   return phases;
+}
+
+/** The movement from one turning point to the next, trimmed to between 5% and 95% of the way (both interpolated between frames). */
+export function travel(ang: SeriesPoint[], a: { t: number; v: number }, b: { t: number; v: number }): { t0: number; t1: number } | null {
+  const span = b.v - a.v;
+  if (!span) return null;
+  const pts = ang.filter((p) => p.v !== null && p.t >= a.t && p.t <= b.t) as { t: number; v: number }[];
+  const frac = (v: number) => (v - a.v) / span;
+  // first time past 95%, then the last time under 5% before it
+  const i1 = pts.findIndex((p) => frac(p.v) >= 0.95);
+  if (i1 < 1) return null;
+  let i0 = 0;
+  for (let i = 0; i < i1; i++) if (frac(pts[i].v) <= 0.05) i0 = i;
+  const cross = (p: { t: number; v: number }, q: { t: number; v: number }, f: number) => {
+    const fp = frac(p.v), fq = frac(q.v);
+    return fq === fp ? q.t : p.t + ((f - fp) / (fq - fp)) * (q.t - p.t);
+  };
+  const t0 = i0 + 1 <= i1 && frac(pts[i0].v) <= 0.05 ? cross(pts[i0], pts[i0 + 1], 0.05) : pts[i0].t;
+  const t1 = cross(pts[i1 - 1], pts[i1], 0.95);
+  return t1 > t0 ? { t0, t1 } : null;
 }
 
 /** Each rep's lifting speed and the set's fatigue: speed lost and slowdown from the fastest rep to the last. */

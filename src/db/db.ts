@@ -3,6 +3,7 @@
 import Dexie, { type Table } from 'dexie';
 import type { CategoryId } from '../lib/feeling';
 import type { PoseTrack } from '../vision/analysis';
+import type { FormSummary } from '../vision/form';
 import type { VelocitySummary } from '../vision/velocity';
 import { migrateNoteIds } from './migrate';
 
@@ -171,6 +172,8 @@ export interface MediaItem {
   rpe?: number;
   /** Each rep's lifting speed from the joint track (src/vision/velocity.ts), kept so the RPE model needn't load tracks. */
   velocity?: VelocitySummary;
+  /** Each rep's form markers (src/vision/form.ts): depth, trunk lean, bar drift and the like. */
+  form?: FormSummary;
   /** Reps and depth from the joint track for the clip's movement, kept so lists needn't load tracks. */
   tracked?: { pattern: string; joint: string; reps: number; deepest?: number; spread?: number; down?: number; up?: number };
   /** A suggested movement pattern, waiting to be confirmed. */
