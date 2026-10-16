@@ -7,7 +7,7 @@ import { db, type CameraAngle, type MediaItem, type MediaPurpose, type PoseId } 
 import { readZip } from '../db/zip';
 import { PATTERN_BY_ID, type PatternId } from '../movement/patterns';
 import type { BodyDims } from '../model/bodyShape';
-import { trackSummary, type PoseTrack } from '../vision/analysis';
+import { cleanBar, trackSummary, type PoseTrack } from '../vision/analysis';
 import { formSummary } from '../vision/form';
 import { timeScaleOf, velocitySummary } from '../vision/velocity';
 import { guessPattern, loggedThatDay, suggest } from '../vision/classify';
@@ -223,6 +223,9 @@ export async function importArchive(
       if (trackBlob) {
         const raw = new Uint8Array(await trackBlob.arrayBuffer());
         track = JSON.parse(strFromU8(raw[0] === 0x1f && raw[1] === 0x8b ? gunzipSync(raw) : raw)) as PoseTrack;
+        const bar = cleanBar(track.bar);
+        if (bar) track.bar = bar;
+        else delete track.bar;
       }
       const day = row.date ?? Date.now();
       const lab = fromLabel(row.label);

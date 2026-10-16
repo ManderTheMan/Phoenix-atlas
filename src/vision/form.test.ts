@@ -172,4 +172,16 @@ describe('form markers per rep', () => {
     const top = ((910 - squatPose(175).left_shoulder![1]) / PX) * 100;
     expect(Math.max(...ys)).toBeCloseTo(top, 0);
   });
+
+  it('follows the plate instead of the shoulders when there is one', () => {
+    const t = squats(2, () => 0);
+    const sh = t.frames.map((f) => [f.lm![LM.left_shoulder * 3], f.lm![LM.left_shoulder * 3 + 1]]);
+    const withPlate: PoseTrack = { ...t, bar: { diameter: 0.45, r: (0.225 * PX) / W, t: t.frames.map((f) => f.t), x: sh.map((p) => p[0] - 0.01), y: sh.map((p) => p[1]) } };
+    const p = barPaths(withPlate, 'squat', dims)!;
+    expect(p.point).toBe('plate');
+    // 1% of the frame behind the shoulders: 10 px, 2.5 cm
+    const body = setForm(t, 'squat', dims)[0].barDrift!, plate = setForm(withPlate, 'squat', dims)[0].barDrift!;
+    expect(plate - body).toBeCloseTo(-2.5, 0);
+    expect(formSummary(withPlate, 'squat', dims)!.plate).toBe(true);
+  });
 });

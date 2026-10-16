@@ -179,7 +179,7 @@ phoenix-archive/
   labels.json        your labels (from `label`)
   clips/<id>/
     clip.json        this clip's details: dates, sorting result, where its copies are
-    track.json.gz    joint tracking, in the app's format (usable clips; one frame for photos)
+    track.json.gz    joint tracking, in the app's format (usable clips; one frame for photos), with the plate when one was followed
     proxy.mp4        the small copy (usable clips; photo.jpg for photos)
     thumb.jpg
     meta.json        the file's full metadata (with --keep-metadata)
@@ -190,6 +190,18 @@ phoenix-archive/
 ```
 
 A clip's id is the start of its SHA-256 fingerprint. The same video found in two places (say on the laptop and inside a Takeout zip) is done once, and its `copies` lists both.
+
+## The bar from the plates
+
+In a clip filmed side-on, the end of a loaded bar is the centre of a round plate, and full-size plates (bumpers and the big iron plates) are 45 cm across. While tracking the joints, the tool also looks for that plate near the lifter's hands and shoulders and follows it through the clip. A plate's size hardly changes and it can't jump far between frames, so stray round things (a clock, a wheel, a light) and moments when a hand hides the plate don't throw it off. When it's followed through most of the clip, `track.json.gz` gains a `bar` entry with the plate centre per frame and its size. The app then measures rep speed and the bar path on the bar itself, scaled by the plate instead of your limb lengths, and outlines the plate on the video.
+
+Clips filmed at an angle show the plate as an oval and usually give nothing. That's the right answer: the joint track still works for them. Smaller plates, or a bar loaded only with small plates, would read as a 45 cm plate and give wrong distances, so check the outline on a few clips. `--no-plates` turns this off.
+
+For an archive tracked before this existed, add the plates from the small copies without tracking again, then pack again:
+
+```bash
+phoenix-archive plates --out "D:\phoenix-archive"
+```
 
 ## Into Phoenix Atlas
 

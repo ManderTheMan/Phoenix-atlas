@@ -8,9 +8,15 @@
 // thigh, shin, upper arm and forearm lie close to the picture plane when you're
 // filmed side-on, so their length in pixels against their real length gives the
 // scale. Time comes from the track's timestamps (corrected for slow motion).
+// When the archive tool followed a plate through the clip (track.bar), the
+// plate's centre is the bar itself and its 45 cm diameter the scale, so both
+// the point and the scale are taken from it instead.
 import type { MediaItem } from '../db/db';
 import type { BodyDims } from '../model/bodyShape';
 import { angleSeries, landmark, nearSide, smooth, type JointId, type LandmarkName, type PoseTrack, type SeriesPoint, type Side } from './analysis';
+
+/** What the speed is measured on: the body point that moves with the bar, or the plate (the bar itself). */
+export type BarPoint = 'shoulder' | 'wrist' | 'plate';
 
 /** The body point that moves with the bar, per pattern. */
 export const BAR_POINT: Record<string, 'shoulder' | 'wrist'> = {
@@ -56,7 +62,7 @@ export interface RepVelocity {
 }
 
 export interface SetVelocity {
-  point: 'shoulder' | 'wrist';
+  point: BarPoint;
   side: Side;
   /** Metres per pixel, and the limbs it was measured from. */
   scale: number;
@@ -112,6 +118,39 @@ export function pixelScale(track: PoseTrack, dims: BodyDims, side: Side = nearSi
   }
   if (!est.length) return null;
   return { scale: quantile(est, 0.5), from };
+}
+
+/** Metres per pixel from the plate (when one was followed): its diameter in pixels against its real size. */
+export function plateScale(track: PoseTrack): number | null {
+  const b = track.bar;
+  return b && b.r > 0 ? b.diameter / (2 * b.r * track.width) : null;
+}
+
+/** Metres per pixel: from the plate when there is one, otherwise from your limb lengths. */
+export function trackScale(track: PoseTrack, dims: BodyDims, side: Side = nearSide(track)): { scale: number; from: string[] } | null {
+  const p = plateScale(track);
+  return p ? { scale: p, from: ['plate'] } : pixelScale(track, dims, side);
+}
+
+/** The plate centre (pixels) at each frame of the track, null where it wasn't seen. */
+export function plateAt(track: PoseTrack): ({ x: number; y: number } | null)[] {
+  const b = track.bar;
+  if (!b) return track.frames.map(() => null);
+  let j = 0;
+  return track.frames.map((f) => {
+    while (j < b.t.length - 1 && b.t[j] < f.t - 1e-3) j++;
+    return Math.abs(b.t[j] - f.t) <= 1e-3 ? { x: b.x[j] * track.width, y: b.y[j] * track.height } : null;
+  });
+}
+
+/** The plate's height (m, upwards) over time. */
+function plateHeight(track: PoseTrack, scale: number): SeriesPoint[] {
+  const at = plateAt(track);
+  return smooth(
+    track.frames.map((f, i) => ({ t: f.t, v: at[i] ? (track.height - at[i]!.y) * scale : null })),
+    3,
+    0.3,
+  );
 }
 
 /** The bar point's height (m, upwards) over time, short gaps filled and lightly smoothed. */
@@ -217,13 +256,18 @@ export function travel(ang: SeriesPoint[], a: { t: number; v: number }, b: { t: 
 export function setVelocity(track: PoseTrack, pattern: string, dims: BodyDims, opts: { timeScale?: number } = {}): SetVelocity | null {
   if (!hasVelocity(pattern) || track.frames.length < 5) return null;
   const side = nearSide(track);
-  const sc = pixelScale(track, dims, side);
+  const phases = liftPhases(track, pattern, side);
+  // the plate, when it was seen at the start and end of nearly every lift
+  const plate = track.bar ? plateHeight(track, plateScale(track)!) : null;
+  const covered = plate && phases.length ? phases.filter((ph) => at(plate, ph.t0) !== null && at(plate, ph.t1) !== null).length / phases.length : 0;
+  const usePlate = !!plate && covered >= 0.8;
+  const sc = usePlate ? { scale: plateScale(track)!, from: ['plate'] } : pixelScale(track, dims, side);
   if (!sc) return null;
-  const point = BAR_POINT[pattern] ?? 'wrist';
+  const point: BarPoint = usePlate ? 'plate' : (BAR_POINT[pattern] ?? 'wrist');
   const k = opts.timeScale ?? 1;
-  const bar = barHeight(track, point, side, sc.scale);
+  const bar = usePlate ? plate! : barHeight(track, point as 'shoulder' | 'wrist', side, sc.scale);
   const reps: RepVelocity[] = [];
-  for (const ph of liftPhases(track, pattern, side)) {
+  for (const ph of phases) {
     const y0 = at(bar, ph.t0), y1 = at(bar, ph.t1);
     if (y0 === null || y1 === null) continue;
     const dur = (ph.t1 - ph.t0) * k;
@@ -263,7 +307,7 @@ export interface VelocitySummary {
   dur: number[];
   /** Height (m) the scale was based on, to rescale if it changes. */
   h: number;
-  point: 'shoulder' | 'wrist';
+  point: BarPoint;
 }
 
 const r3 = (x: number) => Math.round(x * 1000) / 1000;
@@ -284,6 +328,7 @@ export function velocitySummary(track: PoseTrack, pattern: string, dims: BodyDim
 
 /** Speeds rescaled to your current height (the scale is proportional to limb lengths). */
 export function rescaled(v: VelocitySummary, height: number): VelocitySummary {
+  if (v.point === 'plate') return v.h === height ? v : { ...v, h: height }; // the plate's size doesn't depend on yours
   const k = height / v.h;
   if (Math.abs(k - 1) < 1e-6) return v;
   return { ...v, v: v.v.map((x) => r3(x * k)), peak: v.peak.map((x) => r3(x * k)), rom: v.rom.map((x) => r3(x * k)), h: height };

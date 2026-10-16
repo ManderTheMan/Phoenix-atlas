@@ -78,7 +78,7 @@ export default function SpeedPanel({ item, track, seek }: { item: MediaItem; tra
   return (
     <div className="col speed-panel" style={{ gap: 8 }}>
       <div className="row between">
-        <span className="tiny dim">Lifting speed per rep, m/s ({sv.point === 'wrist' ? 'hands' : 'shoulders'}, tap to jump)</span>
+        <span className="tiny dim">Lifting speed per rep, m/s ({sv.point === 'plate' ? 'the bar, followed by its plate' : sv.point === 'wrist' ? 'hands' : 'shoulders'}, tap to jump)</span>
         <span className="tiny muted">{f.reps} rep{f.reps === 1 ? '' : 's'}</span>
       </div>
       <SpeedBars speeds={sv.reps.map((r) => ({ mean: r.mean, t0: r.t0 / sv.timeScale }))} onSeek={seek} />

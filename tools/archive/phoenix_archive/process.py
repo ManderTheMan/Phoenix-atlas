@@ -25,6 +25,7 @@ from . import VERSION
 from .dates import resolve
 from .media import Info, MediaError, fit, frames, make_proxy, make_thumb, probe
 from .photos import PHOTO_EDGE, THUMB_EDGE, TRACK_EDGE as PHOTO_TRACK_EDGE, as_array, exif_date, exif_meta, open_image, save_jpeg
+from .plates import PlateFinder
 from .pose import MODEL_ID, Tracker, body_height_share, frontness, image_stats, joint_angle, mean_stats, to_frame, view_from_frontness
 from .sources import Source, materialize
 
@@ -47,6 +48,7 @@ class Options:
     min_size: float = MIN_SIZE
     keep_metadata: bool = False
     photo_edge: int = PHOTO_EDGE
+    plates: bool = True
 
 
 _opts: Options | None = None
@@ -160,6 +162,7 @@ def track(path: str, info: Info, cid: str, fps_opt: float | None) -> dict:
     expected = max(1, math.floor(info.duration * fps))
     stat_every = max(1, expected // 8)
     out_frames, stats = [], []
+    plates = PlateFinder() if _opts.plates else None
     with Tracker(_opts.model, video=True, num_poses=2) as tracker:
         for i, rgb in enumerate(frames(path, fps, size, timeout=max(300.0, info.duration * 8))):
             t = i / fps
@@ -167,6 +170,8 @@ def track(path: str, info: Info, cid: str, fps_opt: float | None) -> dict:
                 break
             f = to_frame(t, tracker.detect(rgb, int(round(t * 1000))))
             out_frames.append(f)
+            if plates:
+                plates.add(f["t"], rgb, f["lm"])
             if i % stat_every == 0:
                 stats.append(image_stats(rgb, f))
     track = {"id": cid, "model": MODEL_ID, "createdAt": int(time.time() * 1000), "width": info.width, "height": info.height,
@@ -176,7 +181,40 @@ def track(path: str, info: Info, cid: str, fps_opt: float | None) -> dict:
     image = mean_stats(stats)
     if image:
         track["image"] = image
+    bar = plates.result() if plates else None
+    if bar:
+        track["bar"] = bar
     return track
+
+
+def add_plates(clip_dir: Path, redo: bool = False) -> str:
+    """Follows the plate in a clip tracked before plate tracking existed (or again, with redo), from its
+    small copy at the track's own frame rate. Returns what happened: added, none, has, or skipped (why)."""
+    tpath = clip_dir / "track.json.gz"
+    if not tpath.exists():
+        return "skipped: no joint track"
+    with gzip.open(tpath, "rb") as f:
+        t = json.loads(f.read().decode("utf-8"))
+    if t.get("bar") and not redo:
+        return "has"
+    row = json.loads((clip_dir / "clip.json").read_text("utf-8")) if (clip_dir / "clip.json").exists() else {}
+    proxy = row.get("proxy")
+    if not proxy or not (clip_dir / proxy).exists():
+        return "skipped: no small copy (made with --proxy 0)"
+    info = probe(str(clip_dir / proxy))
+    fps = t.get("fps") or 15
+    finder = PlateFinder()
+    frames_ = t.get("frames") or []
+    for i, rgb in enumerate(frames(str(clip_dir / proxy), fps, fit(info.width, info.height, TRACK_EDGE), timeout=max(300.0, info.duration * 8))):
+        if i >= len(frames_):
+            break
+        finder.add(frames_[i]["t"], rgb, frames_[i].get("lm"))
+    bar = finder.result()
+    t.pop("bar", None)
+    if bar:
+        t["bar"] = bar
+    _write_json(tpath, t, gz=True)
+    return "added" if bar else "none"
 
 
 # shoulders, elbows, wrists, hips, knees, ankles

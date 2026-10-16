@@ -6,7 +6,7 @@
 import type { MediaItem } from '../db/db';
 import type { BodyDims } from '../model/bodyShape';
 import { angleSeries, jointAngle, landmark, nearSide, smooth, type LandmarkName, type PoseFrame, type PoseTrack, type Side } from './analysis';
-import { BAR_POINT, LIFT_JOINT, pixelScale, travel, turningPoints } from './velocity';
+import { BAR_POINT, LIFT_JOINT, plateAt, plateScale, trackScale, travel, turningPoints, type BarPoint } from './velocity';
 
 export type FormMarkerId =
   | 'depth'
@@ -141,7 +141,7 @@ export function setForm(track: PoseTrack, pattern: string, dims: BodyDims, opts:
   const want = new Set(ids);
   const side = nearSide(track);
   const k = opts.timeScale ?? 1;
-  const sc = pixelScale(track, dims, side)?.scale;
+  const sc = trackScale(track, dims, side)?.scale;
   const cm = (px: number) => (sc ? px * sc * 100 : undefined);
   const foot = footFrame(track, side);
   const W = track.width, H = track.height;
@@ -152,24 +152,37 @@ export function setForm(track: PoseTrack, pattern: string, dims: BodyDims, opts:
   const angle = (f: PoseFrame | null, j: Parameters<typeof jointAngle>[1]) => (f ? jointAngle(f, j, side, W, H) : null);
   const framesIn = (a: number, b: number) => track.frames.filter((f) => f.t >= a - 1e-6 && f.t <= b + 1e-6);
   const bar = BAR_POINT[pattern] ?? 'wrist';
+  // the plate is the bar itself, when the archive tool followed one
+  const plate = plateAt(track);
+  const index = new Map(track.frames.map((f, i) => [f, i]));
+  const barAt = (f: PoseFrame) => plate[index.get(f)!] ?? (track.bar ? null : P(f, bar));
+
+  // a measurement around a moment: the median over a tenth of a second either side, so one jittery frame doesn't decide it
+  const around = (t: number, fn: (f: PoseFrame) => number | null | undefined) => {
+    const v = framesIn(t - 0.1, t + 0.1).map(fn).filter((x): x is number => typeof x === 'number' && Number.isFinite(x));
+    return v.length ? median(v) : null;
+  };
 
   return repWindows(track, pattern, side).map((w) => {
     const r: Partial<Record<FormMarkerId, number | null | undefined>> = {};
-    const turn = frameAt(track, w.turn);
     const lift = w.up;
+    const angleAround = (t: number, j: Parameters<typeof jointAngle>[1]) => around(t, (f) => angle(f, j));
     if (want.has('down') && w.down) r.down = (w.down.t1 - w.down.t0) * k;
     if (want.has('up')) r.up = (lift.t1 - lift.t0) * k;
-    if (want.has('depth')) r.depth = angle(turn, 'knee');
-    if (want.has('shin')) r.shin = angle(turn, 'shinAngle');
-    if (want.has('trunkLean') && pattern !== 'pullH') r.trunkLean = angle(turn, 'torsoLean');
+    if (want.has('depth')) r.depth = angleAround(w.turn, 'knee');
+    if (want.has('shin')) r.shin = angleAround(w.turn, 'shinAngle');
+    if (want.has('trunkLean') && pattern !== 'pullH') r.trunkLean = angleAround(w.turn, 'torsoLean');
     if (want.has('hipBelowKnee')) {
-      const hip = P(turn, 'hip'), knee = P(turn, 'knee');
-      if (hip && knee) r.hipBelowKnee = cm(hip.y - knee.y);
+      const d = around(w.turn, (f) => {
+        const hip = P(f, 'hip'), knee = P(f, 'knee');
+        return hip && knee ? hip.y - knee.y : null;
+      });
+      if (d !== null) r.hipBelowKnee = cm(d);
     }
     if (want.has('barDrift') && foot) {
       let far = 0, seen = false;
       for (const f of framesIn(lift.t0, lift.t1)) {
-        const b = P(f, bar);
+        const b = barAt(f);
         if (!b) continue;
         seen = true;
         const off = (b.x - foot.mid) * foot.facing;
@@ -177,7 +190,7 @@ export function setForm(track: PoseTrack, pattern: string, dims: BodyDims, opts:
       }
       if (seen) r.barDrift = cm(far);
     }
-    if (want.has('backAngle')) r.backAngle = angle(frameAt(track, lift.t0), 'torsoLean');
+    if (want.has('backAngle')) r.backAngle = angleAround(lift.t0, 'torsoLean');
     if (want.has('hipsFirst')) {
       // the first 40% of the pull's time: the hip's rise against the shoulder's
       const a = frameAt(track, lift.t0), b = frameAt(track, lift.t0 + 0.4 * (lift.t1 - lift.t0));
@@ -211,7 +224,7 @@ export function setForm(track: PoseTrack, pattern: string, dims: BodyDims, opts:
       }
       r.leanBack = most;
     }
-    if (want.has('topElbow')) r.topElbow = angle(turn, 'elbow');
+    if (want.has('topElbow')) r.topElbow = angleAround(w.turn, 'elbow');
     if (want.has('swing')) {
       // the hips against the shoulders, so the body's own arc under the bar (and a moving camera) don't count
       const xs = framesIn(w.t0, w.t1)
@@ -239,13 +252,14 @@ export function setForm(track: PoseTrack, pattern: string, dims: BodyDims, opts:
  * Where the bar went each rep, in cm (y: up from the floor). Standing lifts: x forwards (the way you face) from the
  * middle of the foot. Bench: x towards the feet from the shoulder, with the head to the left.
  */
-export function barPaths(track: PoseTrack, pattern: string, dims: BodyDims): { point: 'shoulder' | 'wrist'; reps: { x: number; y: number }[][]; ref: 'midfoot' | 'shoulder' | null } | null {
+export function barPaths(track: PoseTrack, pattern: string, dims: BodyDims): { point: BarPoint; reps: { x: number; y: number }[][]; ref: 'midfoot' | 'shoulder' | null } | null {
   if (!hasForm(pattern)) return null;
   const side = nearSide(track);
-  const sc = pixelScale(track, dims, side)?.scale;
+  const sc = trackScale(track, dims, side)?.scale;
   if (!sc) return null;
   const foot = footFrame(track, side);
-  const point = BAR_POINT[pattern] ?? 'wrist';
+  const plate = track.bar ? plateAt(track) : null;
+  const point: BarPoint = plate ? 'plate' : (BAR_POINT[pattern] ?? 'wrist');
   let groundY = 0;
   for (const f of track.frames) {
     const p = landmark(f, `${side}_heel`) ?? landmark(f, `${side}_ankle`);
@@ -258,23 +272,34 @@ export function barPaths(track: PoseTrack, pattern: string, dims: BodyDims): { p
   const ref = lying ? (shoulders.length ? median(shoulders) : undefined) : foot?.mid;
   const reps = repWindows(track, pattern, side).map((w) => {
     const pts: { x: number; y: number }[] = [];
-    for (const f of track.frames) {
-      if (f.t < w.t0 || f.t > w.t1) continue;
-      const p = landmark(f, `${side}_${point}`);
+    track.frames.forEach((f, i) => {
+      if (f.t < w.t0 || f.t > w.t1) return;
+      if (plate) {
+        if (plate[i]) pts.push(plate[i]!);
+        return;
+      }
+      const p = landmark(f, `${side}_${point}` as LandmarkName);
       if (p && p.v >= 0.5) pts.push({ x: p.x * track.width, y: p.y * track.height });
-    }
+    });
     const ox = ref ?? pts[0]?.x ?? 0;
     return pts.map((p) => ({ x: (p.x - ox) * facing * sc * 100, y: (groundY - p.y) * sc * 100 }));
   });
   return { point, reps: reps.filter((r) => r.length > 1), ref: ref === undefined ? null : lying ? 'shoulder' : 'midfoot' };
 }
 
+/** Bumped when the markers are measured differently, so stored ones are worked out again. */
+export const FORM_VERSION = 2;
+
 /** The compact record kept on a media item (MediaItem.form). */
 export interface FormSummary {
+  /** FORM_VERSION when measured. */
+  v?: number;
   pattern: string;
   reps: RepForm[];
   /** Height (m) distances were scaled from. */
   h: number;
+  /** Distances were scaled from the plate, so they don't change with your height. */
+  plate?: boolean;
 }
 
 const round = (v: number, unit: FormMarkerDef['unit']) => (unit === 's' || unit === '×' ? Math.round(v * 100) / 100 : Math.round(v * 10) / 10);
@@ -283,6 +308,7 @@ export function formSummary(track: PoseTrack, pattern: string, dims: BodyDims, o
   const reps = setForm(track, pattern, dims, opts);
   if (!reps.length) return null;
   return {
+    v: FORM_VERSION,
     pattern,
     reps: reps.map((r) => {
       const o: RepForm = {};
@@ -290,13 +316,15 @@ export function formSummary(track: PoseTrack, pattern: string, dims: BodyDims, o
       return o;
     }),
     h: dims.height,
+    ...(plateScale(track) ? { plate: true } : {}),
   };
 }
 
-/** Distances rescaled to your current height (the scale is proportional to limb lengths). */
+/** Distances rescaled to your current height (the scale is proportional to limb lengths, unless it came from the plate). */
 export function rescaledForm(f: FormSummary, height: number): FormSummary {
   const k = height / f.h;
   if (Math.abs(k - 1) < 1e-6) return f;
+  if (f.plate) return { ...f, h: height };
   return {
     ...f,
     h: height,

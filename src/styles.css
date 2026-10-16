@@ -1577,6 +1577,8 @@ ol.steps code, p code, li code { font-family: var(--mono); font-size: 12px; back
 .bar-path svg { width: 100%; max-height: 220px; background: var(--bg-2); border-radius: 8px; }
 .bar-path-line { fill: none; stroke: var(--accent); stroke-linejoin: round; stroke-linecap: round; }
 .bar-path-foot { stroke: var(--muted); }
+.pose-plate circle { fill: none; stroke: var(--accent-2); opacity: 0.9; }
+.pose-plate .hub { fill: var(--accent-2); stroke: none; }
 
 /* proportions explorer (movement page) */
 .prop-slider input[type='range'] { width: 100%; }

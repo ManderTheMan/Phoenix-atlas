@@ -6,7 +6,7 @@ import type { MediaItem } from '../../db/db';
 import { updateMedia, useMediaLoaded } from '../../media/media';
 import { useBodyDims } from '../../profile/profile';
 import type { PoseTrack } from '../../vision/analysis';
-import { barPaths, fmtMarker, FORM_MARKERS, formNotes, formSummary, MARKERS_FOR, repWindows, setForm, usualForm, type FormMarkerId } from '../../vision/form';
+import { barPaths, fmtMarker, FORM_MARKERS, FORM_VERSION, formNotes, formSummary, MARKERS_FOR, repWindows, setForm, usualForm, type FormMarkerId } from '../../vision/form';
 import { timeScaleOf } from '../../vision/velocity';
 import Icon from '../Icon';
 
@@ -23,7 +23,7 @@ function BarPath({ paths, point, origin }: { paths: { x: number; y: number }[][]
   const stroke = Math.max(vb.w, vb.h) / 160;
   return (
     <figure className="bar-path">
-      <svg viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`} role="img" aria-label={`Path of the ${point === 'wrist' ? 'hands' : 'shoulders'} each rep, from the side`}>
+      <svg viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`} role="img" aria-label={`Path of the ${point === 'plate' ? 'bar' : point === 'wrist' ? 'hands' : 'shoulders'} each rep, from the side`}>
         {origin && <line x1={0} x2={0} y1={-y1} y2={-y0} className="bar-path-foot" strokeWidth={stroke} strokeDasharray={`${stroke * 4} ${stroke * 3}`} />}
         {paths.map((p, i) => (
           <polyline
@@ -36,7 +36,7 @@ function BarPath({ paths, point, origin }: { paths: { x: number; y: number }[][]
         ))}
       </svg>
       <figcaption className="tiny muted">
-        {point === 'wrist' ? 'Hands' : 'Shoulders'} each rep, from the side ({origin === 'shoulder' ? 'head to the left; dashed: over the shoulder' : `you face right${origin ? '; dashed: over the middle of the foot' : ''}`}). Later reps are darker; the last is thickest.
+        {point === 'plate' ? 'The bar (plate centre)' : point === 'wrist' ? 'Hands' : 'Shoulders'} each rep, from the side ({origin === 'shoulder' ? 'head to the left; dashed: over the shoulder' : `you face right${origin ? '; dashed: over the middle of the foot' : ''}`}). Later reps are darker; the last is thickest.
       </figcaption>
     </figure>
   );
@@ -58,7 +58,7 @@ export default function FormPanel({ item, track, seek }: { item: MediaItem; trac
   useEffect(() => {
     if (k === null || !reps.length) return;
     const f = item.form;
-    if (f && f.pattern === pattern && f.reps.length === reps.length && Math.abs(f.h - dims.height) < 1e-6) return;
+    if (f && f.v === FORM_VERSION && f.pattern === pattern && f.reps.length === reps.length && Math.abs(f.h - dims.height) < 1e-6) return;
     const s = formSummary(track, pattern, dims, opts);
     if (s) void updateMedia(item.id, { form: s });
   }, [reps, item.id, item.form, pattern, track, dims, opts, k]);

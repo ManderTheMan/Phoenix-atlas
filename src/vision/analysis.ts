@@ -59,6 +59,48 @@ export interface PoseTrack {
   sourceFps?: number;
   frames: PoseFrame[];
   image?: ImageStats;
+  /** The bar end, followed from the plate by the archive tool (side-on clips with full-size plates only). */
+  bar?: BarTrack;
+}
+
+/** Where the plate's centre was over time: x and y as fractions of the frame, r as a fraction of its width. */
+export interface BarTrack {
+  /** The plate's real diameter, m (45 cm for full-size plates). */
+  diameter: number;
+  r: number;
+  t: number[];
+  x: number[];
+  y: number[];
+  /** Share of frames the plate was seen in. */
+  found?: number;
+}
+
+/** The plate (fractions of the frame; r of its width) nearest a moment, if it was seen within a tenth of a second. */
+export function plateAtTime(track: PoseTrack, t: number): { x: number; y: number; r: number } | null {
+  const b = track.bar;
+  if (!b || !b.t.length) return null;
+  let lo = 0, hi = b.t.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (b.t[mid] < t) lo = mid;
+    else hi = mid;
+  }
+  const i = Math.abs(b.t[lo] - t) <= Math.abs(b.t[hi] - t) ? lo : hi;
+  return Math.abs(b.t[i] - t) <= 0.1 ? { x: b.x[i], y: b.y[i], r: b.r } : null;
+}
+
+/** A bar track from a file, checked (numbers in range, matching lengths), or undefined. */
+export function cleanBar(x: unknown): BarTrack | undefined {
+  if (!x || typeof x !== 'object') return undefined;
+  const b = x as Record<string, unknown>;
+  const nums = (v: unknown) => Array.isArray(v) && v.every((n) => typeof n === 'number' && Number.isFinite(n));
+  if (!nums(b.t) || !nums(b.x) || !nums(b.y)) return undefined;
+  const t = b.t as number[], xs = b.x as number[], ys = b.y as number[];
+  if (t.length < 5 || xs.length !== t.length || ys.length !== t.length || t.length > 100_000) return undefined;
+  const r = Number(b.r), diameter = Number(b.diameter);
+  if (!(r > 0 && r < 0.5) || !(diameter > 0.1 && diameter < 0.6)) return undefined;
+  const found = Number(b.found);
+  return { diameter, r, t: [...t], x: [...xs], y: [...ys], ...(found >= 0 && found <= 1 ? { found } : {}) };
 }
 
 export type Side = 'left' | 'right';

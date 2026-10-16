@@ -5,6 +5,7 @@
   phoenix-archive sheets --out D:\\phoenix-archive        (numbered contact sheets to look through)
   phoenix-archive label --out D:\\phoenix-archive labels.csv
   phoenix-archive collect --out D:\\phoenix-archive --dest E:\\Lifting   (copies of the originals)
+  phoenix-archive plates --out D:\\phoenix-archive       (bar paths from the plates, for clips tracked before)
   phoenix-archive pack --out D:\\phoenix-archive --dest D:\\packs
 """
 from __future__ import annotations
@@ -26,7 +27,7 @@ from .index import clean_claims, merge, pack, parse_day, rebuild, summary
 from .media import require_ffmpeg
 from .photos import PHOTO_EDGE
 from .pose import ensure_model
-from .process import MIN_SIZE, Options, init_worker, process
+from .process import MIN_SIZE, Options, add_plates, init_worker, process
 from .review import import_labels, sheets
 from .sources import in_shard, scan
 from .state import RunLock, State
@@ -107,7 +108,7 @@ def cmd_run(a: argparse.Namespace) -> None:
         tmp = Path(a.tmp).expanduser() if a.tmp else out / "tmp"
         shutil.rmtree(tmp, ignore_errors=True)
         opts = Options(out=str(out), model=model, tmp=str(tmp), fps=a.fps, proxy_short=a.proxy, proxy_format=a.proxy_format, min_size=a.min_size,
-                       keep_metadata=a.keep_metadata, photo_edge=a.photo_size)
+                       keep_metadata=a.keep_metadata, photo_edge=a.photo_size, plates=not a.no_plates)
         if a.keep_metadata:
             print("Keeping each file's full metadata (camera, settings, location) in clips/<id>/meta.json — for you only; packs leave it out.")
         workers = a.workers or max(1, (os.cpu_count() or 2) // 2)
@@ -243,6 +244,24 @@ def cmd_collect(a: argparse.Namespace) -> None:
     print(f"List: {Path(r['dest']) / 'collected.csv'}")
 
 
+def cmd_plates(a: argparse.Namespace) -> None:
+    require_ffmpeg()
+    out = Path(a.out).expanduser()
+    dirs = sorted(d for d in (out / "clips").glob("*") if (d / "track.json.gz").exists())
+    counts: dict[str, int] = {}
+    for i, d in enumerate(dirs, 1):
+        try:
+            what = add_plates(d, redo=a.redo)
+        except Exception as e:  # noqa: BLE001 - one bad clip must not stop the rest
+            what = f"error: {type(e).__name__}"
+        key = what.split(":")[0]
+        counts[key] = counts.get(key, 0) + 1
+        if what not in ("has",):
+            print(f"[{i}/{len(dirs)}] {d.name}: {what}", flush=True)
+    print(", ".join(f"{v} {k}" for k, v in sorted(counts.items())) or "no tracked clips")
+    print("Pack again to bring the bar paths into the app.")
+
+
 def cmd_merge(a: argparse.Namespace) -> None:
     merge([Path(p).expanduser() for p in a.archives], Path(a.out).expanduser())
 
@@ -276,6 +295,7 @@ def main(argv: list[str] | None = None) -> None:
     r.add_argument("--keep-metadata", action="store_true",
                    help="save each file's full metadata (camera, settings, location, Takeout sidecar) beside its results, for your own use")
     r.add_argument("--photo-size", type=int, default=PHOTO_EDGE, help=f"long side of a photo's small copy (default {PHOTO_EDGE})")
+    r.add_argument("--no-plates", action="store_true", help="don't look for the plates (the bar path and a metric scale, in side-on clips)")
     r.add_argument("--redo", action="store_true", help="process everything again")
     r.add_argument("--dry-run", action="store_true", help="only count what would be done")
     r.set_defaults(func=cmd_run)
@@ -325,6 +345,11 @@ def main(argv: list[str] | None = None) -> None:
     c.add_argument("--reviewed-only", action="store_true", help="only clips you labelled keep=yes")
     c.add_argument("--dry-run", action="store_true", help="only say how many and how big")
     c.set_defaults(func=cmd_collect)
+
+    pl = sub.add_parser("plates", help="find the bar path from the plates in clips tracked before this was added")
+    pl.add_argument("--out", required=True, help="the archive folder")
+    pl.add_argument("--redo", action="store_true", help="look again in clips that already have one")
+    pl.set_defaults(func=cmd_plates)
 
     m = sub.add_parser("merge", help="combine archives from several machines")
     m.add_argument("archives", nargs="+")

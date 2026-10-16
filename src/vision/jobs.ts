@@ -6,7 +6,7 @@ import { db, type MediaItem } from '../db/db';
 import { getMediaBlob } from '../media/media';
 import type { BodyDims } from '../model/bodyShape';
 import { trackSummary, type PoseTrack } from './analysis';
-import { formSummary, hasForm } from './form';
+import { FORM_VERSION, formSummary, hasForm } from './form';
 import { hasVelocity, timeScaleOf, velocitySummary } from './velocity';
 
 interface Job {
@@ -85,7 +85,7 @@ const noTrack = new Set<string>();
 
 const staleSummary = (m: MediaItem) => !!m.pattern && m.tracked?.pattern !== m.pattern;
 const staleSpeed = (m: MediaItem, dims?: BodyDims) => !!dims && hasVelocity(m.pattern) && m.velocity?.pattern !== m.pattern;
-const staleForm = (m: MediaItem, dims?: BodyDims) => !!dims && hasForm(m.pattern) && m.form?.pattern !== m.pattern;
+const staleForm = (m: MediaItem, dims?: BodyDims) => !!dims && hasForm(m.pattern) && (m.form?.pattern !== m.pattern || (m.form?.v ?? 1) < FORM_VERSION);
 
 /**
  * Keeps each clip's reps-and-depth summary, rep speeds and form markers in step with its movement and joint track, a few
@@ -109,7 +109,7 @@ export async function refreshSummaries(items: MediaItem[], dims?: BodyDims, limi
     }
     if (staleForm(m, dims)) {
       const k = timeScaleOf(m);
-      patch.form = (k !== null && formSummary(t, m.pattern!, dims!, { timeScale: k })) || { pattern: m.pattern!, reps: [], h: dims!.height };
+      patch.form = (k !== null && formSummary(t, m.pattern!, dims!, { timeScale: k })) || { v: FORM_VERSION, pattern: m.pattern!, reps: [], h: dims!.height };
     }
     await db.media.update(m.id, patch);
     n++;

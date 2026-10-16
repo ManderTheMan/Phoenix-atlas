@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { bodyDims } from '../model/bodyShape';
-import { LM, type PoseFrame, type PoseTrack } from './analysis';
-import { fatigue, liftPhases, pixelScale, rescaled, setVelocity, turningPoints, velocitySummary } from './velocity';
+import { cleanBar, LM, plateAtTime, type PoseFrame, type PoseTrack } from './analysis';
+import { fatigue, liftPhases, pixelScale, rescaled, setVelocity, trackScale, turningPoints, velocitySummary } from './velocity';
 
 const W = 1000, H = 1000;
 const PX = 400; // pixels per metre in these synthetic clips
@@ -133,5 +133,41 @@ describe('rep speed from the joint track', () => {
     const { track: t } = squatSet([1]);
     expect(setVelocity(t, 'carry', dims)).toBeNull();
     expect(setVelocity({ ...t, frames: t.frames.map((f) => ({ ...f, lm: null })) }, 'squat', dims)).toBeNull();
+  });
+
+  it('uses the plate, when the archive tool followed one, as the bar and the scale', () => {
+    const { track: t } = squatSet([1, 1.4]);
+    // the plate's size says 25% more pixels per metre than the limbs do, to show which scale is used
+    const platePx = 0.225 * PX * 1.25;
+    const bar = {
+      diameter: 0.45,
+      r: platePx / W,
+      t: t.frames.map((f) => f.t),
+      x: t.frames.map((f) => (f.lm![LM.left_shoulder * 3] * W - 20) / W),
+      y: t.frames.map((f) => (f.lm![LM.left_shoulder * 3 + 1] * H + 10) / H),
+      found: 1,
+    };
+    const withPlate = { ...t, bar: cleanBar(bar)! };
+    expect(trackScale(withPlate, dims)!.from).toEqual(['plate']);
+    const body = setVelocity(t, 'squat', dims)!;
+    const plate = setVelocity(withPlate, 'squat', dims)!;
+    expect(plate.point).toBe('plate');
+    expect(plate.scale).toBeCloseTo(1 / (PX * 1.25), 8);
+    // the plate moves with the shoulders here, so speeds differ only by the scale
+    plate.reps.forEach((r, i) => expect(r.mean).toBeCloseTo(body.reps[i].mean / 1.25, 2));
+    // plate speeds don't change with your height
+    const v = velocitySummary(withPlate, 'squat', dims)!;
+    expect(rescaled(v, dims.height * 1.1).v).toEqual(v.v);
+    expect(plateAtTime(withPlate, t.frames[5].t)!.r).toBeCloseTo(bar.r, 6);
+    expect(plateAtTime({ ...t, bar: { ...withPlate.bar!, t: withPlate.bar!.t.map((x) => x + 5) } }, 0)).toBeNull();
+  });
+
+  it('checks plate data from a file', () => {
+    const ok = { diameter: 0.45, r: 0.05, t: [0, 1, 2, 3, 4], x: [0.5, 0.5, 0.5, 0.5, 0.5], y: [0.4, 0.5, 0.6, 0.5, 0.4] };
+    expect(cleanBar(ok)).toEqual(ok);
+    expect(cleanBar({ ...ok, x: [0.5] })).toBeUndefined();
+    expect(cleanBar({ ...ok, r: 2 })).toBeUndefined();
+    expect(cleanBar({ ...ok, y: [0.4, 0.5, 'x', 0.5, 0.4] })).toBeUndefined();
+    expect(cleanBar(null)).toBeUndefined();
   });
 });

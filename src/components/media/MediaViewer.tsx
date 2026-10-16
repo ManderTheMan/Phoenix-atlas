@@ -43,7 +43,7 @@ import MarkLayer, { type Draft } from './MarkLayer';
 import PoseLayer from './PoseLayer';
 import PosePanel from './PosePanel';
 import QualityPanel from './QualityPanel';
-import { landmarksAt, nearSide } from '../../vision/analysis';
+import { landmarksAt, nearSide, plateAtTime } from '../../vision/analysis';
 import { usePoseTrack } from '../../vision/jobs';
 import { useFit } from './useFit';
 import VideoBar, { FRAME, fmtTime, useVideoTime } from './VideoBar';
@@ -303,7 +303,7 @@ export default function MediaViewer({ id, list }: { id: string; list?: string[] 
             ) : (
               <img src={url} alt={title} draggable={false} />
             )}
-            {url && track && showSkeleton && <PoseLayer lm={isVideo ? landmarksAt(track, t) : (track.frames[0]?.lm ?? null)} width={item.width} height={item.height} boxW={box.w} side={nearSide(track)} />}
+            {url && track && showSkeleton && <PoseLayer lm={isVideo ? landmarksAt(track, t) : (track.frames[0]?.lm ?? null)} width={item.width} height={item.height} boxW={box.w} side={nearSide(track)} plate={isVideo ? plateAtTime(track, t) : null} />}
             {url && (
               <MarkLayer item={item} marks={visible} t={time} boxW={box.w} draft={draft} selected={selected} onTap={onTap} onSelect={tool ? undefined : setSelected} onDrag={(mid, i, p) => editMarks((ms) => ms.map((m) => (m.id === mid ? { ...m, points: m.points.map((q, j) => (j === i ? p : q)) } : m)))} />
             )}
