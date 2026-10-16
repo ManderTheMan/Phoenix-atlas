@@ -1578,6 +1578,15 @@ ol.steps code, p code, li code { font-family: var(--mono); font-size: 12px; back
 .bar-path-line { fill: none; stroke: var(--accent); stroke-linejoin: round; stroke-linecap: round; }
 .bar-path-foot { stroke: var(--muted); }
 
+/* proportions explorer (movement page) */
+.prop-slider input[type='range'] { width: 100%; }
+.prop-slider .you-mark { color: var(--text-2); }
+.compare-table { margin-top: 10px; }
+.compare-table td { white-space: nowrap; }
+.compare-table th[scope='row'] { text-align: left; font-weight: 500; color: var(--text-2); text-transform: none; letter-spacing: normal; font-size: 12.5px; }
+.compare-table .up { color: var(--accent-2); }
+.compare-table .down { color: var(--good); }
+
 /* effort tab (movement page) */
 .side-sub { font-size: 13px; font-weight: 600; margin: 0 0 8px; }
 .max-row { display: flex; flex-direction: column; gap: 2px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }

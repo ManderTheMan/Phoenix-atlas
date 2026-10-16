@@ -27,6 +27,8 @@ import {
   type Profile,
   type Units,
 } from '../profile/profile';
+import { BUILT_IN, describePercentile, percentileOf, type RatioId } from '../movement/proportions';
+import { loadPopulation, usePopulation } from '../movement/usePopulation';
 import { parseScanText, readPdfLines, type ScanReport } from '../profile/scan';
 import type { LayerState } from '../state/ui';
 import { useUI } from '../state/ui';
@@ -431,6 +433,14 @@ function Proportions({ dims, values }: { dims: BodyDims; values: Partial<Record<
     .filter(Boolean) as { k: string; pct: number; l: number; r: number }[];
   const whrLimit = profile.sex === 'female' ? 0.85 : profile.sex === 'male' ? 0.9 : undefined;
   const pct = (v: number) => `${v > 0 ? '+' : ''}${Math.round(v)}%`;
+  const ui = useUI();
+  const pop = usePopulation();
+  const popFile = useRef<HTMLInputElement>(null);
+  // where you sit among adults of your sex (men's figures when not set)
+  const among = (id: RatioId) => {
+    const t = describePercentile(percentileOf(pop, id, dims, profile.sex));
+    return `${t[0].toUpperCase()}${t.slice(1)}. `;
+  };
 
   return (
     <div className="card col">
@@ -440,6 +450,7 @@ function Proportions({ dims, values }: { dims: BodyDims; values: Partial<Record<
           <span className="k">Thigh : shin</span>
           <span className="v mono">{femurTibia.toFixed(2)}</span>
           <span className="d">
+            {among('thighShin')}
             {femurTibia > refFT * 1.04
               ? 'Long thighs for your shins: expect more forward lean and more hip work in squats.'
               : femurTibia < refFT * 0.96
@@ -450,12 +461,13 @@ function Proportions({ dims, values }: { dims: BodyDims; values: Partial<Record<
         <div className="prop">
           <span className="k">Legs : height</span>
           <span className="v mono">{legs.toFixed(2)}</span>
-          <span className="d">{legs > refLegs * 1.02 ? 'Long-legged.' : legs < refLegs * 0.98 ? 'Long torso for your height.' : 'Typical leg length for your height.'}</span>
+          <span className="d">{among('legs')}{legs > refLegs * 1.02 ? 'Long-legged.' : legs < refLegs * 0.98 ? 'Long torso for your height.' : 'Typical leg length for your height.'}</span>
         </div>
         <div className="prop">
           <span className="k">Arm span : height</span>
           <span className="v mono">{ape.toFixed(2)}</span>
           <span className="d">
+            {among('ape')}
             {ape > 1.03 ? 'Long arms: shorter pull in deadlifts, longer press in bench.' : ape < 0.98 ? 'Short arms: a shorter bench press, a longer deadlift pull.' : 'Typical arm length.'}
           </span>
         </div>
@@ -497,6 +509,38 @@ function Proportions({ dims, values }: { dims: BodyDims; values: Partial<Record<
             </span>
           </div>
         ))}
+      </div>
+      <div className="row wrap between" style={{ gap: 8, alignItems: 'center' }}>
+        <span className="tiny muted" style={{ flex: '1 1 220px' }}>
+          Percentiles: {pop.source}.
+        </span>
+        <div className="row" style={{ gap: 6 }}>
+          <input
+            ref={popFile}
+            type="file"
+            accept=".json,application/json"
+            hidden
+            onChange={async (e) => {
+              const f = e.target.files?.[0];
+              e.target.value = '';
+              if (!f) return;
+              try {
+                const t = await loadPopulation(f);
+                ui.showToast(`Using ${t.source}`);
+              } catch (err) {
+                ui.showToast((err as Error).message);
+              }
+            }}
+          />
+          <button className="btn small" onClick={() => popFile.current?.click()}>
+            <Icon name="upload" /> Load figures
+          </button>
+          {pop !== BUILT_IN && (
+            <button className="btn ghost small" onClick={() => void loadPopulation(null)}>
+              Built-in
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

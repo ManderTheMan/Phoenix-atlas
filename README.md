@@ -80,6 +80,7 @@ The demo photos are renders of the 3D body fitted to the demo measurements, and 
 - **Automatic joint tracking.** An on-device pose model (MediaPipe Pose Landmarker, run in the browser; nothing is uploaded) finds 33 body landmarks in every frame. The viewer draws the skeleton over the video, shows your knee, hip, torso and shin angles as it plays, charts the main joint angle through the clip, and finds each rep with its depth and tempo (seconds down and up).
 - **Sticking points.** Effort follows each joint's strength at its angle, so the leverage panel shows where a lift is hardest and which joint limits it. With an estimated max, it scales to your strength.
 - **Form, rep by rep.** On a tracked clip, the numbers a coach watches for that lift, for every rep: depth and hip height in a squat, back angle and whether the hips shoot up in a deadlift, bar drift from mid-foot, lean-back in a press, swing in a pull-up. It notes what changed as the set went on and, once you have a few clips of a lift, how this set compares with your usual. A side-on plot shows the bar's path each rep.
+- **Proportions.** Where your legs-to-height, thigh-to-shin and arm-span-to-height ratios sit among adults, and, on the Movement page, the same lift done by a different build at your height: trunk lean, bar travel, work per rep, each joint's peak effort and where it gets hardest. The other build can be shown on the model.
 - **Rep speed and effort.** From the joint track alone, each rep's lifting speed (m/s, scaled by your own limb lengths, slow motion corrected) and how much the set slowed. The app estimates how hard the set was (RPE) from that slowdown and, given the weight, from your estimated max. Every RPE you enter on a clip or a logged exercise tunes the estimate to you. **Movement → Effort** shows your maxes per lift, your own speed at failure, and how the estimate's accuracy has improved.
 - **One tap to measurements.** Turn the tracker's result into start and bottom markers (so the leverage model follows your video) or into Knee, Hip and Torso lean measurements that chart over time. It also compares itself with the angles you drew by hand.
 - **Capture-quality checks.** Each photo and video is checked for resolution, frame rate, framing, body size, camera angle, steadiness, joint confidence, lighting and sharpness, with why each matters and what to change next time.
@@ -231,6 +232,16 @@ Effort is scaled by the group's role. Where effort peaks through the range is th
 - **From the video.** A small linear model per movement turns the last rep's speed and the share of speed lost into reps in reserve. It starts from typical bar-speed figures and is updated (Bayesian, one rated set at a time) with every RPE you enter.
 
 The two are combined by how accurate each has been for you. Everything is replayed in date order, each set predicted before it's learned from, so the accuracy chart is an honest measure of how well it would have guessed.
+
+### How the proportions work
+
+`src/movement/proportions.ts` reads three ratios from your fitted body: hip height over height, thigh over shin, and arm span over height. It places them against a population table that holds each ratio at nine percentiles, relative to the men's median. The reference body stands in for the median man. Relative figures are used because tape-measure landmarks (in a survey) and joint centres (in the model) give different absolute ratios but much the same spread. The built-in table is approximate. For exact percentiles, download the two public ANSUR II tables (the 2012 US Army survey of about 4,000 men and 2,000 women) from Penn State's OPEN Design Lab, run
+
+```
+python3 scripts/ansur-proportions.py "ANSUR II MALE Public.csv" "ANSUR II FEMALE Public.csv" -o ansur2-proportions.json
+```
+
+and load the result in Profile → Your proportions → Load figures. To build another body at the same height, the explorer splits the leg between thigh and shin first. It then trades leg length against torso, then scales the arm. It changes your measurements to do this, so the 3D model can show the result, and corrects for the body fit's own small couplings. Both builds then run through the lift's model. Peak effort is each joint's highest demand as a share of typical strength at its angle.
 
 ### How the form markers work
 

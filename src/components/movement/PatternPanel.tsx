@@ -3,7 +3,7 @@ import { formatMeasure, type Units } from '../../profile/profile';
 import { CAPACITY, effortColor, relativeDemand, ROLE_LABEL, type GroupEffort, type StickingPoint } from '../../movement/activation';
 import type { JointId, ModelResult } from '../../movement/biomech';
 import { GROUP_BY_ID, type GroupId } from '../../movement/groups';
-import { PATTERNS, type PatternDef, type PatternId } from '../../movement/patterns';
+import { PATTERNS, wherePhase, type PatternDef, type PatternId } from '../../movement/patterns';
 import { CURVES, kindOf, PEAK_FACTOR, strengthShare } from '../../movement/strength';
 import { formatShort } from '../../lib/dates';
 import { formSeries, markName, markValue, useMedia } from '../../media/media';
@@ -39,11 +39,7 @@ function Spark({ values, at, color }: { values: number[]; at: number; color: str
 }
 
 /** Where a point of the range is, in words: “at the bottom”, or how far back up. */
-function where(pattern: PatternDef, phase: number): string {
-  if (phase >= 0.95) return `at “${pattern.phase[1]}”`;
-  if (phase <= 0.05) return `at “${pattern.phase[0]}”`;
-  return `${Math.round((1 - phase) * 100)}% of the way from “${pattern.phase[1]}” back to “${pattern.phase[0]}”`;
-}
+const where = wherePhase;
 
 export default function PatternPanel({
   state,

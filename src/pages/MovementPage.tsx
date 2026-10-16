@@ -3,12 +3,13 @@ import landmarks from '../anatomy/landmarks.json';
 import type { LayerId } from '../anatomy/types';
 import PatternPanel, { type PatternState } from '../components/movement/PatternPanel';
 import EffortPanel from '../components/movement/EffortPanel';
+import ProportionsExplorer from '../components/movement/ProportionsExplorer';
 import TrainingPanel, { FULL_SETS } from '../components/movement/TrainingPanel';
 import { Check, Seg } from '../components/common';
 import Icon from '../components/Icon';
 import BodyViewer, { type AxisMarker } from '../components/viewer/BodyViewer';
 import { useActivities, useNotes } from '../hooks/useData';
-import { bodyDims, type V3 } from '../model/bodyShape';
+import { bodyDims, computeBodyShape, type ShapeInput, type V3 } from '../model/bodyShape';
 import { effortColor, effortColors, groupEfforts, personalScale, relativeDemand, stickingPoint, sweep } from '../movement/activation';
 import { runModel, type JointId } from '../movement/biomech';
 import { groupsOfStructure, groupStructures, GROUP_BY_ID, type GroupId } from '../movement/groups';
@@ -59,6 +60,8 @@ export default function MovementPage() {
   const [showDeep, setShowDeep] = useState(false);
   const [view, setView] = useState<{ view: CameraView; n: number }>({ view: 'angle', n: 1 });
   const [scaled, setScaled] = useState(true);
+  // another build from the proportions explorer, shown in place of yours
+  const [preview, setPreview] = useState<ShapeInput | null>(null);
   const rpe = useRpe();
   const touchedLoad = useRef(new Set<PatternId>());
 
@@ -117,7 +120,9 @@ export default function MovementPage() {
 
   const mass = values.weight ?? healthMass ?? 75;
   const massSource = values.weight ? 'profile' : healthMass ? 'health' : 'default';
-  const dims = useMemo(() => bodyDims(shapeInputFrom(values)), [values]);
+  const myInput = useMemo(() => shapeInputFrom(values), [values]);
+  const dims = useMemo(() => bodyDims(preview ?? myInput), [preview, myInput]);
+  const shown = useMemo(() => (preview ? computeBodyShape(preview) : profile.applyToModel ? shape : null), [preview, profile.applyToModel, shape]);
   const variant = pattern.variants.find((v) => v.value === state.variant) ?? pattern.variants[0];
   const options = useMemo(() => ({ ...state.options, variant: variant.value }), [state.options, variant.value]);
   const load = variant.load === 'none' ? 0 : state.load;
@@ -168,7 +173,7 @@ export default function MovementPage() {
       if (!j) continue;
       const rel = relativeDemand(j, mass, j.demand >= 0 ? 1 : -1, scale);
       a.at.forEach((name, i) => {
-        const center = (shape?.joints[name] ?? LM.joints[name]) as V3;
+        const center = (shown?.joints[name] ?? LM.joints[name]) as V3;
         const dir = a.joint === 'ankle' && a.dir === 'x' && LM.axes[name] ? LM.axes[name] : DIRS[a.dir];
         out.push({
           id: `${a.joint}:${name}`,
@@ -182,7 +187,7 @@ export default function MovementPage() {
       });
     }
     return out;
-  }, [tab, pattern, result, mass, shape, scale]);
+  }, [tab, pattern, result, mass, shown, scale]);
 
   const onPick = (sel: Selection) => {
     const gs = groupsOfStructure(sel.structureId);
@@ -191,7 +196,11 @@ export default function MovementPage() {
     else if (gs[0]) ui.showToast(`${GROUP_BY_ID.get(gs[0])!.name} isn’t a main group in the ${pattern.name.toLowerCase()}`);
   };
 
-  const dimsNote = values.height ? `Your proportions (${Math.round(dims.height * 100)} cm)` : 'Reference proportions (add your height in Profile)';
+  const dimsNote = preview
+    ? 'Another build (from “Same lift, other proportions” below)'
+    : values.height
+      ? `Your proportions (${Math.round(dims.height * 100)} cm)`
+      : 'Reference proportions (add your height in Profile)';
 
   return (
     <div className="atlas movement">
@@ -206,7 +215,7 @@ export default function MovementPage() {
           onPick={onPick}
           viewRequest={view}
           highlight={highlight}
-          shape={profile.applyToModel ? shape : null}
+          shape={shown}
           neutral={{ muscular: '#5b5358' }}
           axes={axes}
           selectedAxis={joint}
@@ -278,7 +287,9 @@ export default function MovementPage() {
             onScaled={setScaled}
             sticking={sticking}
           />
-        ) : tab === 'effort' ? (
+        ) : null}
+        {tab === 'pattern' && <ProportionsExplorer pattern={pattern} options={options} load={load} mass={mass} input={myInput} sex={profile.sex} units={profile.units} onPreview={setPreview} />}
+        {tab === 'pattern' ? null : tab === 'effort' ? (
           <EffortPanel />
         ) : (
           <TrainingPanel

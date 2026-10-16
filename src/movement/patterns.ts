@@ -437,3 +437,10 @@ export function optionsForExercise(name: string, pattern: PatternId): Record<str
   if (pattern === 'squat' && /pause|deep|atg/.test(n)) return { depth: 'deep' };
   return {};
 }
+
+/** Where in the movement a phase (0–1) is, in the pattern's own words. */
+export function wherePhase(pattern: PatternDef, phase: number): string {
+  if (phase >= 0.95) return `at “${pattern.phase[1]}”`;
+  if (phase <= 0.05) return `at “${pattern.phase[0]}”`;
+  return `${Math.round((1 - phase) * 100)}% of the way from “${pattern.phase[1]}” back to “${pattern.phase[0]}”`;
+}
